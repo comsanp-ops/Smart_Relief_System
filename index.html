@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="th" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e3a8a">
+  <title>Smart E-Government Relief System</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'Prompt', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+  <style>
+    .view { display: none; }
+    .view.active { display: block; }
+    .step-content { display: none; }
+    .step-content.active { display: block; }
+    .input-field {
+      width: 100%;
+      padding: 0.7rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.6rem;
+      background-color: #ffffff;
+      color: #0f172a;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .dark .input-field {
+      background-color: #1e293b;
+      border-color: #334155;
+      color: #f8fafc;
+    }
+    .input-field:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .input-field:disabled {
+      background-color: #f1f5f9;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+    .dark .input-field:disabled {
+      background-color: #0f172a;
+      color: #94a3b8;
+    }
+    .card-box {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 1rem;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+    .dark .card-box {
+      background: #1e293b;
+      border-color: #334155;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    #signatureCanvas {
+      width: 100%;
+      max-width: 580px;
+      height: 180px;
+      border: 2px dashed #94a3b8;
+      border-radius: 0.75rem;
+      background: #ffffff;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .dark #signatureCanvas {
+      background: #0f172a;
+      border-color: #475569;
+    }
+    #map {
+      height: 450px;
+      border-radius: 0.8rem;
+      z-index: 1;
+    }
+    .spinner {
+      width: 1.1rem;
+      height: 1.1rem;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .skeleton {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 0.375rem;
+    }
+    .dark .skeleton {
+      background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+      background-size: 200% 100%;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-blue-900/95 text-white backdrop-blur-md border-b border-blue-800 shadow-md">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="bg-blue-800 p-2.5 rounded-xl border border-blue-700 shadow-sm">
+          <i class="fa-solid fa-shield-halved text-2xl text-amber-400"></i>
+        </div>
+        <div>
+          <h1 class="text-lg md:text-xl font-bold tracking-wide">Smart E-Government Relief System</h1>
+          <p class="text-xs text-blue-200">ระบบรับคำร้องขอความช่วยเหลือผู้ประสบภัยออนไลน์</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between md:justify-end gap-3">
+        <nav class="flex space-x-1 md:space-x-2 bg-blue-950/60 p-1.5 rounded-xl border border-blue-800">
+          <button id="tab-form" class="rounded-lg px-4 py-2 text-xs md:text-sm font-semibold text-white bg-blue-600 shadow-sm transition-all" onclick="switchTab('form')">
+            <i class="fa-solid fa-file-pen mr-1.5"></i> ยื่นคำร้อง
+          </button>
+          <button id="tab-track" class="rounded-lg px-4 py-2 text-xs md:text-sm font-semibold text-blue-200 hover:text-white transition-all" onclick="switchTab('track')">
+            <i class="fa-solid fa-magnifying-glass mr-1.5"></i> ติดตามสถานะ
+          </button>
+          <button id="tab-admin" class="rounded-lg px-4 py-2 text-xs md:text-sm font-semibold text-blue-200 hover:text-white transition-all" onclick="switchTab('admin')">
+            <i class="fa-solid fa-user-shield mr-1.5"></i> เจ้าหน้าที่
+          </button>
+        </nav>
+
+        <button onclick="toggleDarkMode()" class="bg-blue-800 hover:bg-blue-700 text-amber-300 w-10 h-10 rounded-xl flex items-center justify-center border border-blue-700 shadow-sm transition-all" title="สลับโหมดสว่าง/มืด">
+          <i id="darkModeIcon" class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 md:py-8">
+
+    <!-- =========================================================
+         TAB 1: ยื่นคำร้อง (Multi-Step Wizard)
+    ========================================================= -->
+    <section id="view-form" class="view active">
+      <div class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 card-box p-4 border-l-4 border-l-blue-600">
+        <div class="flex items-center space-x-3">
+          <div class="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-circle-info"></i>
+          </div>
+          <p class="text-xs md:text-sm text-slate-600 dark:text-slate-300">
+            <strong>คำแนะนำ:</strong> กรอกข้อมูลให้ครบถ้วน ระบบมีระบบบันทึกแบบร่างอัตโนมัติ และรองรับการอ่านบัตรประชาชนด้วย AI
+          </p>
+        </div>
+        <button type="button" onclick="clearLocalDraft()" class="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline flex items-center">
+          <i class="fa-solid fa-trash-can mr-1.5"></i> ล้างแบบร่างในเครื่อง
+        </button>
+      </div>
+
+      <!-- Progress Wizard Bar -->
+      <div class="card-box p-4 md:p-6 mb-6">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs font-bold">
+          <div id="step-indicator-1" class="p-2 rounded-lg bg-blue-600 text-white transition-all">1. บัตรประชาชน</div>
+          <div id="step-indicator-2" class="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all">2. ข้อมูลผู้ยื่น</div>
+          <div id="step-indicator-3" class="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all">3. เหตุภัยพิบัติ</div>
+          <div id="step-indicator-4" class="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all">4. สถานที่</div>
+          <div id="step-indicator-5" class="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all">5. ครัวเรือน/ไฟล์</div>
+          <div id="step-indicator-6" class="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all">6. ลายเซ็น/ส่ง</div>
+        </div>
+      </div>
+
+      <form id="reliefForm" class="space-y-6" onsubmit="submitForm(event)" novalidate>
+
+        <!-- STEP 1: OCR บัตรประชาชน -->
+        <div id="step-content-1" class="step-content active card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-id-card mr-3 text-blue-600"></i> ขั้นตอนที่ 1: อ่านข้อมูลจากบัตรประชาชน (AI OCR)
+            </h2>
+            <p class="text-sm text-slate-500 mt-1">ท่านสามารถถ่ายภาพบัตรเพื่อเติมข้อมูลอัตโนมัติ หรือข้ามไปกรอกเองได้</p>
+          </div>
+
+          <div class="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50">
+            <label class="flex cursor-pointer items-start gap-3 text-sm text-amber-900 dark:text-amber-200">
+              <input id="ocrConsent" type="checkbox" class="mt-1 h-4 w-4 rounded text-blue-600 focus:ring-blue-500">
+              <span>ข้าพเจ้ายินยอมให้ระบบประมวลผลภาพบัตรประชาชนชั่วคราวเพื่ออ่านและเติมข้อมูล โดยรูปภาพบัตรจะไม่ถูกบันทึกหรือเก็บไว้ในคำร้อง</span>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+            <div class="space-y-4">
+              <label class="block text-sm font-semibold">ถ่ายภาพหรืออัปโหลดหน้าบัตรประชาชน</label>
+              <input id="idCardFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="input-field text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900/50 dark:file:text-blue-300">
+              <div class="flex flex-wrap gap-3 pt-2">
+                <button type="button" onclick="executeIdCardOcr()" id="ocrBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center">
+                  <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> อ่านข้อมูลบัตรอัตโนมัติ
+                </button>
+                <button type="button" onclick="clearIdCardOcrUI()" class="border border-slate-300 dark:border-slate-600 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                  ล้างรูปภาพ
+                </button>
+              </div>
+              <div id="ocrStatusMsg" class="hidden text-sm p-3 rounded-xl font-medium"></div>
+            </div>
+
+            <div class="text-center">
+              <img id="idCardPreviewImg" class="hidden max-h-56 mx-auto rounded-xl border border-slate-300 dark:border-slate-700 object-contain shadow-sm bg-slate-100 dark:bg-slate-900" alt="Preview">
+              <p id="ocrSuccessHint" class="hidden mt-3 text-sm text-emerald-600 dark:text-emerald-400 font-bold">
+                <i class="fa-solid fa-circle-check mr-1"></i> เติมข้อมูลลงแบบฟอร์มสำเร็จแล้ว กรุณาตรวจสอบในขั้นตอนถัดไป
+              </p>
+            </div>
+          </div>
+
+          <div class="flex justify-end pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="nextStep(2)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all flex items-center">
+              ถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: ข้อมูลผู้ยื่น -->
+        <div id="step-content-2" class="step-content card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-user mr-3 text-blue-600"></i> ขั้นตอนที่ 2: ข้อมูลส่วนตัวผู้ยื่นคำร้อง
+            </h2>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div class="lg:col-span-2">
+              <label class="required block text-sm font-semibold mb-2">เลขประจำตัวประชาชน 13 หลัก</label>
+              <input type="text" id="citizenId" required maxlength="13" class="input-field font-mono" placeholder="ระบุตัวเลขล้วน">
+              <p id="citizenIdCheckMsg" class="text-xs mt-1 font-semibold"></p>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">คำนำหน้าชื่อ</label>
+              <select id="prefix" required class="input-field">
+                <option value="">-- เลือก --</option>
+                <option value="นาย">นาย</option>
+                <option value="นาง">นาง</option>
+                <option value="นางสาว">นางสาว</option>
+                <option value="เด็กชาย">เด็กชาย</option>
+                <option value="เด็กหญิง">เด็กหญิง</option>
+                <option value="อื่น ๆ">อื่น ๆ</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">ชื่อ</label>
+              <input type="text" id="firstName" required class="input-field" placeholder="ชื่อจริง">
+            </div>
+            <div class="lg:col-span-2">
+              <label class="block text-sm font-semibold mb-2">นามสกุล</label>
+              <input type="text" id="lastName" class="input-field" placeholder="นามสกุล">
+            </div>
+            <div class="lg:col-span-2">
+              <label class="required block text-sm font-semibold mb-2">เบอร์โทรศัพท์มือถือ</label>
+              <input type="tel" id="phone" required maxlength="10" class="input-field" placeholder="08XXXXXXXX">
+            </div>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="prevStep(1)" class="border border-slate-300 dark:border-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
+            </button>
+            <button type="button" onclick="nextStep(3)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all flex items-center">
+              ถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3: เหตุภัยพิบัติ -->
+        <div id="step-content-3" class="step-content card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-house-crack mr-3 text-orange-500"></i> ขั้นตอนที่ 3: รายละเอียดเหตุการณ์ภัยพิบัติ
+            </h2>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div class="lg:col-span-3">
+              <label class="required block text-sm font-semibold mb-2">ประเภทภัยพิบัติ</label>
+              <select id="disasterType" required class="input-field">
+                <option value="">-- เลือกประเภทภัยพิบัติ --</option>
+                <option value="อุทกภัย (น้ำท่วม)">อุทกภัย (น้ำท่วม)</option>
+                <option value="วาตภัย (พายุ)">วาตภัย (พายุ)</option>
+                <option value="อัคคีภัย (ไฟไหม้)">อัคคีภัย (ไฟไหม้)</option>
+                <option value="ดินถล่ม">ดินถล่ม</option>
+                <option value="ภัยแล้ง">ภัยแล้ง</option>
+                <option value="แผ่นดินไหว">แผ่นดินไหว</option>
+                <option value="อื่น ๆ">อื่น ๆ</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">วันที่เกิดภัย</label>
+              <input type="date" id="disasterDate" required class="input-field">
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">เวลาเกิดภัย</label>
+              <input type="time" id="disasterTime" required class="input-field">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold mb-2">วันที่สิ้นสุดภัย (ถ้ามี)</label>
+              <input type="date" id="disasterEndDate" class="input-field">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold mb-2">เวลาสิ้นสุดภัย</label>
+              <input type="time" id="disasterEndTime" class="input-field">
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">ระดับความเสียหายที่อยู่อาศัย</label>
+              <select id="houseDamageLevel" required class="input-field">
+                <option value="">-- เลือก --</option>
+                <option value="เสียหายเล็กน้อย">เสียหายเล็กน้อย</option>
+                <option value="เสียหายบางส่วน">เสียหายบางส่วน</option>
+                <option value="เสียหายรุนแรง">เสียหายรุนแรง</option>
+                <option value="เสียหายทั้งหลัง">เสียหายทั้งหลัง</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">สถานะการครอบครองบ้าน</label>
+              <select id="ownershipStatus" required class="input-field">
+                <option value="">-- เลือก --</option>
+                <option value="เจ้าของบ้าน">เจ้าของบ้าน</option>
+                <option value="ผู้อาศัย">ผู้อาศัย</option>
+                <option value="ผู้เช่า">ผู้เช่า</option>
+                <option value="อื่น ๆ">อื่น ๆ</option>
+              </select>
+            </div>
+            <div class="lg:col-span-3">
+              <label class="block text-sm font-semibold mb-2">ประเมินมูลค่าความเสียหายเบื้องต้น (บาท)</label>
+              <input type="number" id="assetDamageEst" min="0" step="0.01" value="0" class="input-field font-bold text-emerald-600 dark:text-emerald-400">
+            </div>
+            <div class="lg:col-span-3">
+              <label class="block text-sm font-semibold mb-2">รายละเอียดความเสียหายเพิ่มเติม</label>
+              <textarea id="damageDetails" rows="3" class="input-field" placeholder="ระบุทรัพย์สินหรือโครงสร้างที่ได้รับความเสียหาย..."></textarea>
+            </div>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="prevStep(2)" class="border border-slate-300 dark:border-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
+            </button>
+            <button type="button" onclick="nextStep(4)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all flex items-center">
+              ถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 4: สถานที่เกิดเหตุ -->
+        <div id="step-content-4" class="step-content card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-location-dot mr-3 text-red-500"></i> ขั้นตอนที่ 4: สถานที่เกิดเหตุ / ที่อยู่อาศัย
+            </h2>
+            <button type="button" onclick="fetchCurrentGpsLocation()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center">
+              <i class="fa-solid fa-location-crosshairs mr-2 text-red-400"></i> ดึงพิกัด GPS ปัจจุบัน
+            </button>
+          </div>
+
+          <input type="hidden" id="latitude">
+          <input type="hidden" id="longitude">
+          <p id="gpsStatusNotice" class="text-xs font-semibold text-slate-500"></p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div class="lg:col-span-2">
+              <label class="required block text-sm font-semibold mb-2">บ้านเลขที่ / ซอย / ถนน</label>
+              <textarea id="address" rows="2" required class="input-field" placeholder="ระบุบ้านเลขที่ (OCR จะเติมให้หรือพิมพ์เพิ่ม)"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold mb-2">หมู่ที่</label>
+              <input type="text" id="moo" class="input-field" placeholder="เช่น 1 หรือ -">
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">จังหวัด</label>
+              <select id="province" required class="input-field" onchange="onProvinceChanged()">
+                <option value="">-- เลือกจังหวัด --</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">อำเภอ / เขต</label>
+              <select id="district" required class="input-field" onchange="onDistrictChanged()" disabled>
+                <option value="">-- เลือกอำเภอ --</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">ตำบล / แขวง</label>
+              <select id="subDistrict" required class="input-field" onchange="onSubDistrictChanged()" disabled>
+                <option value="">-- เลือกตำบล --</option>
+              </select>
+            </div>
+            <div>
+              <label class="required block text-sm font-semibold mb-2">รหัสไปรษณีย์</label>
+              <input type="text" id="zipcode" required maxlength="5" class="input-field font-mono" placeholder="5 หลัก">
+            </div>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="prevStep(3)" class="border border-slate-300 dark:border-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
+            </button>
+            <button type="button" onclick="nextStep(5)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all flex items-center">
+              ถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 5: สมาชิกครัวเรือนและไฟล์แนบ -->
+        <div id="step-content-5" class="step-content card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700 flex flex-wrap justify-between items-center gap-3">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-users mr-3 text-purple-600"></i> ขั้นตอนที่ 5: สมาชิกครัวเรือนและเอกสารแนบ
+            </h2>
+            <button type="button" onclick="addFamilyMemberRow()" class="bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-purple-200 transition-all">
+              <i class="fa-solid fa-plus mr-1"></i> เพิ่มสมาชิก
+            </button>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+            <table class="w-full text-left text-sm min-w-[650px]">
+              <thead class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                <tr>
+                  <th class="p-3">ชื่อ-นามสกุล</th>
+                  <th class="p-3 w-24">อายุ</th>
+                  <th class="p-3">ความสัมพันธ์</th>
+                  <th class="p-3">อาชีพ</th>
+                  <th class="p-3 text-center w-16">ลบ</th>
+                </tr>
+              </thead>
+              <tbody id="familyTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
+            </table>
+          </div>
+
+          <div class="pt-4 border-t dark:border-slate-700 space-y-4">
+            <h3 class="font-bold text-base text-slate-800 dark:text-slate-200">หลักฐานและเอกสารประกอบ</h3>
+            <p class="text-xs text-slate-500">รองรับ JPG, PNG, WEBP และ PDF ขนาดไฟล์ละไม่เกิน 4 MB (รวมทั้งหมดไม่เกิน 12 MB)</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div class="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                <label class="block text-sm font-semibold mb-2">รูปภาพความเสียหาย (สูงสุด 5 รูป)</label>
+                <input type="file" id="damagePhotosInput" accept="image/jpeg,image/png,image/webp" multiple class="input-field text-xs">
+              </div>
+              <div class="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                <label class="block text-sm font-semibold mb-2">เอกสารทางราชการ / บัตร / บัญชีธนาคาร</label>
+                <input type="file" id="officialDocsInput" accept="image/jpeg,image/png,image/webp,application/pdf" multiple class="input-field text-xs">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="prevStep(4)" class="border border-slate-300 dark:border-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
+            </button>
+            <button type="button" onclick="nextStep(6)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all flex items-center">
+              ถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 6: ลายเซ็นและส่ง -->
+        <div id="step-content-6" class="step-content card-box p-6 md:p-8 space-y-6">
+          <div class="border-b pb-4 dark:border-slate-700">
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400 flex items-center">
+              <i class="fa-solid fa-file-signature mr-3 text-emerald-600"></i> ขั้นตอนที่ 6: ลงลายมือชื่อและยืนยันการส่ง
+            </h2>
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold mb-1">ลงลายมือชื่ออิเล็กทรอนิกส์ในกรอบด้านล่าง</label>
+            <p class="text-xs text-slate-500 mb-3">ใช้เมาส์หรือใช้นิ้วมือลากเส้นลงนามเพื่อยืนยันคำร้อง</p>
+            <canvas id="signatureCanvas"></canvas>
+            <div class="mt-2">
+              <button type="button" onclick="clearSignatureCanvas()" class="text-xs font-bold text-red-600 hover:underline">
+                <i class="fa-solid fa-rotate-left mr-1"></i> ล้างลายเซ็นแล้วลงใหม่
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t dark:border-slate-700 space-y-4">
+            <label class="flex cursor-pointer items-start gap-3 text-sm">
+              <input id="finalConsent" type="checkbox" required class="mt-1 h-4 w-4 rounded text-blue-600 focus:ring-blue-500">
+              <span class="font-medium">ข้าพเจ้ายืนยันว่าข้อมูลทั้งหมดเป็นความจริงทุกประการ และยินยอมให้หน่วยงานรัฐนำข้อมูลไปใช้ตรวจสอบเพื่อพิจารณาอนุมัติวงเงินช่วยเหลือตามระเบียบราชการ</span>
+            </label>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t dark:border-slate-700">
+            <button type="button" onclick="prevStep(5)" class="border border-slate-300 dark:border-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
+            </button>
+            <button type="submit" id="finalSubmitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3.5 rounded-xl shadow-lg transition-all flex items-center text-base">
+              <i class="fa-solid fa-paper-plane mr-2"></i> ยืนยันและส่งคำร้องทันที
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- =========================================================
+         TAB 2: ติดตามสถานะ (Timeline)
+    ========================================================= -->
+    <section id="view-track" class="view">
+      <div class="mx-auto max-w-3xl space-y-6">
+        <div class="card-box p-6 md:p-8 text-center space-y-4">
+          <div class="w-16 h-16 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-sm">
+            <i class="fa-solid fa-magnifying-glass-location"></i>
+          </div>
+          <h2 class="text-2xl font-bold">ติดตามสถานะคำร้องขอความช่วยเหลือ</h2>
+          <p class="text-sm text-slate-500">กรอกหมายเลข Tracking ID ที่ได้รับตอนยื่นคำร้อง (เช่น DR-2026-0001)</p>
+          
+          <div class="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto pt-2">
+            <input type="text" id="searchTrackingId" class="input-field text-center font-bold tracking-widest uppercase" placeholder="DR-YYYY-XXXX">
+            <button type="button" onclick="performTrackingSearch()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-all flex-shrink-0">
+              <i class="fa-solid fa-search mr-2"></i> ค้นหา
+            </button>
+          </div>
+        </div>
+
+        <div id="trackingResultContainer" class="hidden"></div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         TAB 3: เจ้าหน้าที่ (Dashboard & Operations)
+    ========================================================= -->
+    <section id="view-admin" class="view">
+      <!-- Login Gate -->
+      <div id="adminLoginBox" class="mx-auto max-w-md card-box p-8 text-center space-y-6 mt-10">
+        <div class="w-20 h-20 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-inner">
+          <i class="fa-solid fa-user-shield"></i>
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold">ศูนย์ปฏิบัติการเจ้าหน้าที่</h2>
+          <p class="text-xs text-slate-500 mt-1">Smart E-Government Operations Center</p>
+        </div>
+
+        <div class="space-y-4 text-left">
+          <label class="block text-sm font-semibold">Admin API Key</label>
+          <input type="password" id="adminApiKeyInput" class="input-field font-mono" placeholder="ระบุรหัสความปลอดภัยเจ้าหน้าที่">
+          <button type="button" onclick="adminLogin()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all">
+            เข้าสู่ระบบ Dashboard
+          </button>
+        </div>
+      </div>
+
+      <!-- Dashboard Main -->
+      <div id="adminDashboardContent" class="hidden space-y-6">
+        <div class="card-box p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-blue-900 dark:text-blue-400">ภาพรวมสถานะระบบคำร้อง</h2>
+            <p id="dashboardLastUpdated" class="text-xs text-slate-500 mt-0.5"></p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="exportData('csv')" class="bg-slate-700 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm">
+              <i class="fa-solid fa-file-csv mr-1.5"></i> Export CSV
+            </button>
+            <button type="button" onclick="exportData('xlsx')" class="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm">
+              <i class="fa-solid fa-file-excel mr-1.5"></i> Export Excel
+            </button>
+            <button type="button" onclick="loadAdminDashboardData()" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm">
+              <i class="fa-solid fa-rotate mr-1.5"></i> รีเฟรชข้อมูล
+            </button>
+            <button type="button" onclick="adminLogout()" class="border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 px-3.5 py-2 rounded-xl text-xs font-bold transition-all">
+              ออกจากระบบ
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="card-box p-5 border-l-4 border-l-blue-600">
+            <p class="text-xs text-slate-500 font-semibold uppercase">คำร้องทั้งหมด</p>
+            <h3 id="kpiTotal" class="text-3xl font-black mt-2">0</h3>
+          </div>
+          <div class="card-box p-5 border-l-4 border-l-amber-500">
+            <p class="text-xs text-slate-500 font-semibold uppercase">รอดำเนินการ</p>
+            <h3 id="kpiPending" class="text-3xl font-black mt-2">0</h3>
+          </div>
+          <div class="card-box p-5 border-l-4 border-l-emerald-600">
+            <p class="text-xs text-slate-500 font-semibold uppercase">อนุมัติแล้ว</p>
+            <h3 id="kpiApproved" class="text-3xl font-black mt-2">0</h3>
+          </div>
+          <div class="card-box p-5 border-l-4 border-l-purple-600">
+            <p class="text-xs text-slate-500 font-semibold uppercase">วงเงินรวมที่อนุมัติ</p>
+            <h3 id="kpiBudget" class="text-2xl font-black mt-2 text-purple-700 dark:text-purple-300">0 บาท</h3>
+          </div>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="card-box p-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <input type="search" id="adminSearchInput" class="input-field text-sm" placeholder="ค้นหาชื่อ, เลขคำร้อง, พื้นที่..." oninput="applyAdminFilters()">
+            <select id="filterStatusSelect" class="input-field text-sm" onchange="applyAdminFilters()">
+              <option value="">ทุกสถานะ</option>
+              <option value="รอดำเนินการ">รอดำเนินการ</option>
+              <option value="ตรวจสอบแล้ว">ตรวจสอบแล้ว</option>
+              <option value="อนุมัติ">อนุมัติ</option>
+              <option value="ไม่อนุมัติ">ไม่อนุมัติ</option>
+            </select>
+            <select id="filterDisasterSelect" class="input-field text-sm" onchange="applyAdminFilters()">
+              <option value="">ทุกประเภทภัยพิบัติ</option>
+            </select>
+            <select id="filterProvinceSelect" class="input-field text-sm" onchange="applyAdminFilters()">
+              <option value="">ทุกจังหวัด</option>
+            </select>
+            <button type="button" onclick="resetAdminFilters()" class="border border-slate-300 dark:border-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              ล้างตัวกรอง
+            </button>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="card-box p-6">
+            <h3 class="font-bold text-base mb-4 text-blue-900 dark:text-blue-400">สถิติสถานะคำร้อง</h3>
+            <div class="relative h-64"><canvas id="adminStatusChart"></canvas></div>
+          </div>
+          <div class="card-box p-6">
+            <h3 class="font-bold text-base mb-4 text-blue-900 dark:text-blue-400">สัดส่วนประเภทภัยพิบัติ</h3>
+            <div class="relative h-64"><canvas id="adminDisasterChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- GIS Map -->
+        <div class="card-box p-6">
+          <h3 class="font-bold text-base mb-4 text-blue-900 dark:text-blue-400 flex items-center">
+            <i class="fa-solid fa-map-location-dot mr-2 text-red-500"></i> แผนที่แสดงพิกัดจุดเกิดเหตุ (GIS Mapping)
+          </h3>
+          <div id="map"></div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="card-box p-6">
+          <div class="flex justify-between items-center mb-4 pb-2 border-b dark:border-slate-700">
+            <h3 class="font-bold text-base text-blue-900 dark:text-blue-400">รายการคำร้องทั้งหมด</h3>
+            <span id="adminRecordCountLabel" class="text-xs text-slate-500 font-semibold"></span>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+            <table class="w-full text-left text-sm whitespace-nowrap">
+              <thead class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                <tr>
+                  <th class="p-3 font-bold">Tracking ID</th>
+                  <th class="p-3 font-bold">ผู้ยื่นคำร้อง</th>
+                  <th class="p-3 font-bold">ประเภทภัย</th>
+                  <th class="p-3 font-bold">พื้นที่เกิดเหตุ</th>
+                  <th class="p-3 font-bold">วันที่ยื่น</th>
+                  <th class="p-3 font-bold text-center">สถานะ</th>
+                  <th class="p-3 font-bold">วงเงินอนุมัติ</th>
+                  <th class="p-3 font-bold text-center">จัดการ / เอกสาร</th>
+                </tr>
+              </thead>
+              <tbody id="adminTableBody" class="divide-y divide-slate-100 dark:divide-slate-800">
+                <!-- Skeleton rows loaded dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal สำหรับจัดการคำร้องและดูรายละเอียด (Admin) -->
+  <div id="adminActionModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="card-box max-w-2xl w-full p-6 md:p-8 space-y-6 bg-white dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3 dark:border-slate-700">
+        <h3 id="modalTrackingTitle" class="text-lg font-bold text-blue-900 dark:text-blue-400">จัดการคำร้อง</h3>
+        <button type="button" onclick="closeAdminModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <div id="modalContentBody" class="space-y-4 text-sm">
+        <!-- ข้อมูลถูกเติมผ่าน JS -->
+      </div>
+
+      <div class="border-t pt-4 dark:border-slate-700 space-y-4">
+        <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200">อัปเดตผลการพิจารณา</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold mb-1">สถานะคำร้องใหม่</label>
+            <select id="modalStatusSelect" class="input-field text-sm">
+              <option value="รอดำเนินการ">รอดำเนินการ</option>
+              <option value="ตรวจสอบแล้ว">ตรวจสอบแล้ว</option>
+              <option value="อนุมัติ">อนุมัติ</option>
+              <option value="ไม่อนุมัติ">ไม่อนุมัติ</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1">วงเงินช่วยเหลือ (บาท)</label>
+            <input type="number" id="modalAmountInput" class="input-field text-sm font-bold text-emerald-600" min="0" step="0.01">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1">ความเห็นเจ้าหน้าที่ / หมายเหตุ</label>
+          <textarea id="modalCommentInput" rows="2" class="input-field text-sm" placeholder="ระบุเหตุผลหรือคำแนะนำ..."></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-4 border-t dark:border-slate-700">
+        <button type="button" onclick="closeAdminModal()" class="border border-slate-300 dark:border-slate-600 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+          ปิดหน้าต่าง
+        </button>
+        <button type="button" onclick="saveAdminActionChanges()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-md transition-all">
+          บันทึกการเปลี่ยนแปลง
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toastNotification" class="fixed bottom-5 right-5 z-[9999] hidden max-w-sm rounded-xl px-5 py-4 text-sm font-bold text-white shadow-2xl transition-all"></div>
+
+  <!-- =========================================================
+       JavaScript Frontend Logic
+  ========================================================= -->
+  <script>
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzKf4Mrk5Oi4RKXLDsYgYZBZajsN0b0UBBekViXGBmt8-BrkVDQ8Zu-fuImUIN5jJRS/exec';
+
+    let locationMasterData = [];
+    let adminRecordsCache = [];
+    let filteredAdminRecords = [];
+    let currentSelectedTrackingId = '';
+
+    let currentWizardStep = 1;
+    let localDraftStorageKey = 'EGovReliefFormDraft_v4';
+
+    let signatureCanvasInstance = null;
+    let signatureContextInstance = null;
+    let isDrawing = false;
+    let signatureHasContent = false;
+
+    let leafletMapInstance = null;
+    let mapMarkersList = [];
+    let statusChartInstance = null;
+    let disasterChartInstance = null;
+
+    window.addEventListener('DOMContentLoaded', async function() {
+      initDarkMode();
+      initSignaturePad();
+      setDefaultDisasterDateTime();
+      addFamilyMemberRow();
+      setupFormAutoSaveListeners();
+      restoreLocalDraftToForm();
+
+      try {
+        const response = await apiGet('getLocations');
+        if (response.status === 'success') {
+          locationMasterData = response.data || [];
+          populateProvinceDropdown();
+        }
+      } catch (error) {
+        console.error('Failed to load locations:', error);
+      }
+    });
+
+    // Dark Mode Toggle
+    function initDarkMode() {
+      const isDark = localStorage.getItem('theme') === 'dark' || 
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('darkModeIcon').className = 'fa-solid fa-sun text-amber-300';
+      }
+    }
+
+    function toggleDarkMode() {
+      const root = document.documentElement;
+      const icon = document.getElementById('darkModeIcon');
+      if (root.classList.contains('dark')) {
+        root.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        icon.className = 'fa-solid fa-moon';
+      } else {
+        root.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        icon.className = 'fa-solid fa-sun text-amber-300';
+      }
+    }
+
+    // Navigation Tabs
+    function switchTab(tabName) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => {
+        b.className = 'rounded-lg px-4 py-2 text-xs md:text-sm font-semibold text-blue-200 hover:text-white transition-all';
+      });
+
+      document.getElementById('view-' + tabName).classList.add('active');
+      const activeBtn = document.getElementById('tab-' + tabName);
+      activeBtn.className = 'rounded-lg px-4 py-2 text-xs md:text-sm font-semibold text-white bg-blue-600 shadow-sm transition-all';
+
+      if (tabName === 'admin' && !document.getElementById('adminDashboardContent').classList.contains('hidden')) {
+        setTimeout(() => { if (leafletMapInstance) leafletMapInstance.invalidateSize(); }, 250);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Toast Notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toastNotification');
+      const colorMap = {
+        success: 'bg-emerald-600',
+        error: 'bg-red-600',
+        warning: 'bg-amber-600',
+        info: 'bg-blue-600'
+      };
+      toast.className = 'fixed bottom-5 right-5 z-[9999] max-w-sm rounded-xl px-5 py-4 text-sm font-bold text-white shadow-2xl ' + (colorMap[type] || colorMap.info);
+      toast.textContent = message;
+      toast.classList.remove('hidden');
+
+      clearTimeout(window.toastTimerHandle);
+      window.toastTimerHandle = setTimeout(() => { toast.classList.add('hidden'); }, 4500);
+    }
+
+    // API Helpers
+    async function apiGet(action, params = {}) {
+      const url = new URL(GAS_URL);
+      url.searchParams.set('action', action);
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+      });
+      const res = await fetch(url.toString(), { method: 'GET', redirect: 'follow' });
+      if (!res.ok) throw new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      return res.json();
+    }
+
+    async function apiPost(payload) {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      return res.json();
+    }
+
+    // Wizard Steps
+    function nextStep(targetStep) {
+      if (targetStep > currentWizardStep) {
+        if (!validateCurrentStep(currentWizardStep)) return;
+      }
+      document.getElementById('step-content-' + currentWizardStep).classList.remove('active');
+      document.getElementById('step-indicator-' + currentWizardStep).className = 'p-2 rounded-lg bg-emerald-600 text-white transition-all';
+      
+      currentWizardStep = targetStep;
+      document.getElementById('step-content-' + currentWizardStep).classList.add('active');
+      document.getElementById('step-indicator-' + currentWizardStep).className = 'p-2 rounded-lg bg-blue-600 text-white transition-all';
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+    }
+
+    function prevStep(targetStep) {
+      document.getElementById('step-content-' + currentWizardStep).classList.remove('active');
+      document.getElementById('step-indicator-' + currentWizardStep).className = 'p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 transition-all';
+      
+      currentWizardStep = targetStep;
+      document.getElementById('step-content-' + currentWizardStep).classList.add('active');
+      document.getElementById('step-indicator-' + currentWizardStep).className = 'p-2 rounded-lg bg-blue-600 text-white transition-all';
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+    }
+
+    function validateCurrentStep(step) {
+      if (step === 2) {
+        const citizenId = document.getElementById('citizenId').value.replace(/\D/g, '');
+        const prefix = document.getElementById('prefix').value;
+        const firstName = document.getElementById('firstName').value.trim();
+        const phone = document.getElementById('phone').value.replace(/\D/g, '');
+
+        if (!isValidCitizenId(citizenId)) {
+          showToast('กรุณากรอกเลขประจำตัวประชาชน 13 หลักให้ถูกต้อง', 'error');
+          document.getElementById('citizenId').focus();
+          return false;
+        }
+        if (!prefix || !firstName || !phone) {
+          showToast('กรุณากรอกคำนำหน้า ชื่อ และเบอร์โทรศัพท์ให้ครบถ้วน', 'warning');
+          return false;
+        }
+      }
+      if (step === 3) {
+        if (!document.getElementById('disasterType').value || !document.getElementById('disasterDate').value || 
+            !document.getElementById('disasterTime').value || !document.getElementById('houseDamageLevel').value || 
+            !document.getElementById('ownershipStatus').value) {
+          showToast('กรุณากรอกข้อมูลเหตุภัยพิบัติให้ครบถ้วน', 'warning');
+          return false;
+        }
+      }
+      if (step === 4) {
+        if (!document.getElementById('address').value.trim() || !document.getElementById('province').value || 
+            !document.getElementById('district').value || !document.getElementById('subDistrict').value || 
+            !document.getElementById('zipcode').value) {
+          showToast('กรุณากรอกข้อมูลสถานที่เกิดเหตุให้ครบถ้วน', 'warning');
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function isValidCitizenId(id) {
+      const clean = String(id || '').replace(/\D/g, '');
+      if (clean.length !== 13) return false;
+      let sum = 0;
+      for (let i = 0; i < 12; i++) sum += Number(clean.charAt(i)) * (13 - i);
+      return (11 - (sum % 11)) % 10 === Number(clean.charAt(12));
+    }
+
+    // OCR ID Card Integration
+    async function executeIdCardOcr() {
+      const consent = document.getElementById('ocrConsent').checked;
+      const fileInput = document.getElementById('idCardFileInput');
+      const file = fileInput.files[0];
+
+      if (!consent) {
+        showOcrStatus('กรุณาติ๊กยินยอมให้ระบบประมวลผลภาพบัตรก่อน', 'warning');
+        return;
+      }
+      if (!file) {
+        showOcrStatus('กรุณาเลือกไฟล์ภาพหน้าบัตรประชาชน', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('ocrBtn');
+      const originalText = btn.innerHTML;
+
+      try {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner inline-block mr-2"></span> กำลังวิเคราะห์ AI...';
+        showOcrStatus('กำลังประมวลผลภาพบัตรประชาชน...', 'info');
+
+        const base64Data = await convertFileToBase64(file);
+        const res = await apiPost({ action: 'ocrThaiIdCard', imageBase64: base64Data });
+
+        if (res.status !== 'success') throw new Error(res.message || 'อ่านข้อมูลไม่สำเร็จ');
+
+        const d = res.data || {};
+        if (d.citizenId) document.getElementById('citizenId').value = d.citizenId;
+        if (d.prefix) document.getElementById('prefix').value = d.prefix;
+        if (d.firstName) document.getElementById('firstName').value = d.firstName;
+        if (d.lastName) document.getElementById('lastName').value = d.lastName;
+        if (d.address) document.getElementById('address').value = d.address;
+
+        showOcrStatus('อ่านข้อมูลและเติมฟอร์มสำเร็จ!', 'success');
+        document.getElementById('ocrSuccessHint').classList.remove('hidden');
+
+        // แสดงรูปพรีวิว
+        const previewImg = document.getElementById('idCardPreviewImg');
+        previewImg.src = URL.createObjectURL(file);
+        previewImg.classList.remove('hidden');
+
+        fileInput.value = '';
+      } catch (err) {
+        console.error(err);
+        showOcrStatus(err.message || 'เกิดข้อผิดพลาดในการอ่านบัตร', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+
+    function showOcrStatus(msg, type) {
+      const el = document.getElementById('ocrStatusMsg');
+      const map = {
+        success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+        error: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300',
+        warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+        info: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
+      };
+      el.className = 'text-sm p-3 rounded-xl font-medium ' + (map[type] || map.info);
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+
+    function clearIdCardOcrUI() {
+      document.getElementById('idCardFileInput').value = '';
+      document.getElementById('idCardPreviewImg').classList.add('hidden');
+      document.getElementById('ocrSuccessHint').classList.add('hidden');
+      document.getElementById('ocrStatusMsg').classList.add('hidden');
+    }
+
+    function convertFileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Location Cascading Selects
+    function populateProvinceDropdown() {
+      const pSelect = document.getElementById('province');
+      const provinces = [...new Set(locationMasterData.map(i => i.Province || i.province).filter(Boolean))].sort();
+      pSelect.innerHTML = '<option value="">-- เลือกจังหวัด --</option>' + provinces.map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+
+    function onProvinceChanged() {
+      const p = document.getElementById('province').value;
+      const dSelect = document.getElementById('district');
+      const sSelect = document.getElementById('subDistrict');
+      dSelect.innerHTML = '<option value="">-- เลือกอำเภอ --</option>';
+      sSelect.innerHTML = '<option value="">-- เลือกตำบล --</option>';
+      dSelect.disabled = !p;
+      sSelect.disabled = true;
+      document.getElementById('zipcode').value = '';
+
+      if (!p) return;
+      const districts = [...new Set(locationMasterData.filter(i => (i.Province || i.province) === p).map(i => i.District || i.district).filter(Boolean))].sort();
+      dSelect.innerHTML += districts.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+
+    function onDistrictChanged() {
+      const p = document.getElementById('province').value;
+      const d = document.getElementById('district').value;
+      const sSelect = document.getElementById('subDistrict');
+      sSelect.innerHTML = '<option value="">-- เลือกตำบล --</option>';
+      sSelect.disabled = !(p && d);
+      document.getElementById('zipcode').value = '';
+
+      if (!(p && d)) return;
+      const subs = [...new Set(locationMasterData.filter(i => (i.Province || i.province) === p && (i.District || i.district) === d).map(i => i.Sub_District || i.sub_district).filter(Boolean))].sort();
+      sSelect.innerHTML += subs.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    function onSubDistrictChanged() {
+      const p = document.getElementById('province').value;
+      const d = document.getElementById('district').value;
+      const s = document.getElementById('subDistrict').value;
+
+      const match = locationMasterData.find(i => (i.Province || i.province) === p && (i.District || i.district) === d && (i.Sub_District || i.sub_district) === s);
+      if (match) {
+        document.getElementById('zipcode').value = match.Zipcode || match.zipcode || '';
+      }
+    }
+
+    // GPS Location
+    function fetchCurrentGpsLocation() {
+      const notice = document.getElementById('gpsStatusNotice');
+      if (!navigator.geolocation) {
+        notice.textContent = 'เบราว์เซอร์ไม่รองรับ GPS';
+        return;
+      }
+      notice.textContent = 'กำลังค้นหาตำแหน่งพิกัด...';
+      navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('latitude').value = pos.coords.latitude.toFixed(7);
+        document.getElementById('longitude').value = pos.coords.longitude.toFixed(7);
+        notice.textContent = 'บันทึกพิกัด GPS สำเร็จเรียบร้อย';
+      }, err => {
+        notice.textContent = 'ไม่สามารถดึงพิกัดได้ (ตรวจสอบสิทธิ์ GPS)';
+      }, { enableHighAccuracy: true });
+    }
+
+    // Family Members Dynamic Table
+    function addFamilyMemberRow(data = {}) {
+      const tbody = document.getElementById('familyTableBody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="p-2"><input type="text" class="input-field fam-name text-xs" value="${data.name || ''}" placeholder="ชื่อ-นามสกุล"></td>
+        <td class="p-2"><input type="number" class="input-field fam-age text-xs" value="${data.age || ''}" placeholder="อายุ" min="0" max="130"></td>
+        <td class="p-2"><input type="text" class="input-field fam-rel text-xs" value="${data.relation || ''}" placeholder="ความสัมพันธ์"></td>
+        <td class="p-2"><input type="text" class="input-field fam-occ text-xs" value="${data.occupation || ''}" placeholder="อาชีพ"></td>
+        <td class="p-2 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-red-600 hover:text-red-800 p-2"><i class="fa-solid fa-trash"></i></button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function getFamilyMembersData() {
+      return Array.from(document.querySelectorAll('#familyTableBody tr')).map(tr => ({
+        name: tr.querySelector('.fam-name').value.trim(),
+        age: tr.querySelector('.fam-age').value.trim(),
+        relation: tr.querySelector('.fam-rel').value.trim(),
+        occupation: tr.querySelector('.fam-occ').value.trim()
+      })).filter(m => m.name || m.age || m.relation);
+    }
+
+    // Signature Pad
+    function initSignaturePad() {
+      signatureCanvasInstance = document.getElementById('signatureCanvas');
+      resizeSigCanvas();
+      window.addEventListener('resize', resizeSigCanvas);
+
+      signatureCanvasInstance.addEventListener('pointerdown', e => {
+        isDrawing = true;
+        signatureHasContent = true;
+        signatureCanvasInstance.setPointerCapture(e.pointerId);
+        const rect = signatureCanvasInstance.getBoundingClientRect();
+        signatureContextInstance.beginPath();
+        signatureContextInstance.moveTo((e.clientX - rect.left) * (signatureCanvasInstance.width / rect.width), (e.clientY - rect.top) * (signatureCanvasInstance.height / rect.height));
+      });
+
+      signatureCanvasInstance.addEventListener('pointermove', e => {
+        if (!isDrawing) return;
+        const rect = signatureCanvasInstance.getBoundingClientRect();
+        signatureContextInstance.lineTo((e.clientX - rect.left) * (signatureCanvasInstance.width / rect.width), (e.clientY - rect.top) * (signatureCanvasInstance.height / rect.height));
+        signatureContextInstance.stroke();
+      });
+
+      signatureCanvasInstance.addEventListener('pointerup', () => isDrawing = false);
+      signatureCanvasInstance.addEventListener('pointerleave', () => isDrawing = false);
+    }
+
+    function resizeSigCanvas() {
+      if (!signatureCanvasInstance) return;
+      const w = Math.min(signatureCanvasInstance.parentElement.clientWidth - 4, 580);
+      signatureCanvasInstance.width = w;
+      signatureCanvasInstance.height = 180;
+      signatureContextInstance = signatureCanvasInstance.getContext('2d');
+      signatureContextInstance.lineWidth = 2.2;
+      signatureContextInstance.lineCap = 'round';
+      signatureContextInstance.strokeStyle = document.documentElement.classList.contains('dark') ? '#f8fafc' : '#0f172a';
+    }
+
+    function clearSignatureCanvas() {
+      if (!signatureContextInstance) return;
+      signatureContextInstance.clearRect(0, 0, signatureCanvasInstance.width, signatureCanvasInstance.height);
+      signatureHasContent = false;
+    }
+
+    function setDefaultDisasterDateTime() {
+      const now = new Date();
+      document.getElementById('disasterDate').value = now.toISOString().slice(0, 10);
+      document.getElementById('disasterTime').value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+
+    // Auto-Save Draft (localStorage)
+    function setupFormAutoSaveListeners() {
+      const formFields = ['citizenId', 'prefix', 'firstName', 'lastName', 'phone', 'disasterType', 'disasterDate', 'disasterTime', 'address', 'province', 'district', 'subDistrict', 'zipcode'];
+      formFields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', saveFormDraftToLocal);
+      });
+    }
+
+    function saveFormDraftToLocal() {
+      const draft = {
+        citizenId: document.getElementById('citizenId').value,
+        prefix: document.getElementById('prefix').value,
+        firstName: document.getElementById('firstName').value,
+        lastName: document.getElementById('lastName').value,
+        phone: document.getElementById('phone').value,
+        address: document.getElementById('address').value,
+        province: document.getElementById('province').value,
+        district: document.getElementById('district').value,
+        subDistrict: document.getElementById('subDistrict').value,
+        zipcode: document.getElementById('zipcode').value
+      };
+      localStorage.setItem(localDraftStorageKey, JSON.stringify(draft));
+    }
+
+    function restoreLocalDraftToForm() {
+      const raw = localStorage.getItem(localDraftStorageKey);
+      if (!raw) return;
+      try {
+        const d = JSON.parse(raw);
+        if (d.citizenId) document.getElementById('citizenId').value = d.citizenId;
+        if (d.prefix) document.getElementById('prefix').value = d.prefix;
+        if (d.firstName) document.getElementById('firstName').value = d.firstName;
+        if (d.lastName) document.getElementById('lastName').value = d.lastName;
+        if (d.phone) document.getElementById('phone').value = d.phone;
+        if (d.address) document.getElementById('address').value = d.address;
+        if (d.province) {
+          document.getElementById('province').value = d.province;
+          onProvinceChanged();
+        }
+        if (d.district) {
+          document.getElementById('district').value = d.district;
+          onDistrictChanged();
+        }
+        if (d.subDistrict) document.getElementById('subDistrict').value = d.subDistrict;
+        if (d.zipcode) document.getElementById('zipcode').value = d.zipcode;
+      } catch (e) {
+        console.error('Draft restore failed', e);
+      }
+    }
+
+    function clearLocalDraft() {
+      localStorage.removeItem(localDraftStorageKey);
+      showToast('ล้างแบบร่างในเครื่องเรียบร้อยแล้ว', 'info');
+    }
+
+    // Form Submission
+    async function submitForm(e) {
+      e.preventDefault();
+      if (!signatureHasContent) {
+        showToast('กรุณาลงลายมือชื่อก่อนส่งคำร้อง', 'warning');
+        return;
+      }
+      if (!document.getElementById('finalConsent').checked) {
+        showToast('กรุณายอมรับเงื่อนไขและข้อตกลง', 'warning');
+        return;
+      }
+
+      const submitBtn = document.getElementById('finalSubmitBtn');
+      const originalText = submitBtn.innerHTML;
+
+      try {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner inline-block mr-2"></span> กำลังส่งคำร้อง...';
+
+        const filesArray = [];
+        const damageFiles = Array.from(document.getElementById('damagePhotosInput').files);
+        const docFiles = Array.from(document.getElementById('officialDocsInput').files);
+
+        for (const f of damageFiles) {
+          filesArray.push({ name: f.name, mimeType: f.type, category: 'damage', data: await convertFileToBase64(f) });
+        }
+        for (const f of docFiles) {
+          filesArray.push({ name: f.name, mimeType: f.type, category: 'doc', data: await convertFileToBase64(f) });
+        }
+
+        const payload = {
+          citizenId: document.getElementById('citizenId').value.replace(/\D/g, ''),
+          prefix: document.getElementById('prefix').value,
+          firstName: document.getElementById('firstName').value.trim(),
+          lastName: document.getElementById('lastName').value.trim(),
+          phone: document.getElementById('phone').value.replace(/\D/g, ''),
+          disasterType: document.getElementById('disasterType').value,
+          disasterDate: document.getElementById('disasterDate').value,
+          disasterTime: document.getElementById('disasterTime').value,
+          disasterEndDate: document.getElementById('disasterEndDate').value,
+          disasterEndTime: document.getElementById('disasterEndTime').value,
+          houseDamageLevel: document.getElementById('houseDamageLevel').value,
+          ownershipStatus: document.getElementById('ownershipStatus').value,
+          assetDamageEst: document.getElementById('assetDamageEst').value || 0,
+          damageDetails: document.getElementById('damageDetails').value.trim(),
+          address: document.getElementById('address').value.trim(),
+          moo: document.getElementById('moo').value.trim(),
+          subDistrict: document.getElementById('subDistrict').value,
+          district: document.getElementById('district').value,
+          province: document.getElementById('province').value,
+          zipcode: document.getElementById('zipcode').value.trim(),
+          latitude: document.getElementById('latitude').value,
+          longitude: document.getElementById('longitude').value,
+          familyMembers: getFamilyMembersData(),
+          files: filesArray,
+          signatureBase64: signatureCanvasInstance.toDataURL('image/png').split(',')[1]
+        };
+
+        const res = await apiPost(payload);
+        if (res.status !== 'success') throw new Error(res.message || 'บันทึกไม่สำเร็จ');
+
+        localStorage.removeItem(localDraftStorageKey);
+        showToast('ยื่นคำร้องสำเร็จ Tracking ID: ' + res.trackingId, 'success');
+
+        // ไปหน้าติดตามสถานะ
+        switchTab('track');
+        document.getElementById('searchTrackingId').value = res.trackingId;
+        performTrackingSearch();
+        document.getElementById('reliefForm').reset();
+        clearSignatureCanvas();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'เกิดข้อผิดพลาดในการส่งคำร้อง', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }
+    }
+
+    // Tracking & Timeline
+    async function performTrackingSearch() {
+      const trackingId = document.getElementById('searchTrackingId').value.trim().toUpperCase();
+      const container = document.getElementById('trackingResultContainer');
+      container.classList.remove('hidden');
+
+      if (!trackingId) {
+        container.innerHTML = '<div class="card-box p-4 text-center text-amber-600 font-semibold">กรุณากรอก Tracking ID</div>';
+        return;
+      }
+
+      container.innerHTML = '<div class="card-box p-6 text-center text-slate-500">กำลังค้นหาข้อมูลคำร้อง...</div>';
+
+      try {
+        const res = await apiGet('track', { trackingId });
+        if (res.status === 'not_found') {
+          container.innerHTML = '<div class="card-box p-6 text-center text-red-600 font-semibold">ไม่พบข้อมูลคำร้อง กรุณาตรวจสอบ Tracking ID อีกครั้ง</div>';
+          return;
+        }
+        if (res.status !== 'success') throw new Error(res.message || 'ค้นหาไม่สำเร็จ');
+
+        const d = res.data;
+        const timelineHtml = (d.timeline || []).map(t => `
+          <div class="relative pl-6 pb-6 border-l-2 border-blue-500 last:border-0 last:pb-0">
+            <div class="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-600 ring-4 ring-blue-100 dark:ring-blue-950"></div>
+            <p class="text-xs font-bold text-blue-600 dark:text-blue-400">${t.timestamp}</p>
+            <p class="text-sm font-bold mt-1">สถานะ: ${t.newStatus || t.actionType}</p>
+            ${t.comment ? `<p class="text-xs text-slate-500 mt-1">ความเห็น: "${t.comment}"</p>` : ''}
+          </div>
+        `).join('');
+
+        container.innerHTML = `
+          <div class="card-box p-6 md:p-8 space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 dark:border-slate-700 gap-2">
+              <div>
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tracking ID</span>
+                <h3 class="text-2xl font-black text-blue-900 dark:text-blue-300">${d.trackingId}</h3>
+              </div>
+              <div class="px-4 py-1.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                ${d.status}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div><span class="text-slate-500">ผู้ยื่น:</span> <strong class="text-slate-800 dark:text-slate-200">${d.name}</strong></div>
+              <div><span class="text-slate-500">ประเภทภัย:</span> <strong class="text-slate-800 dark:text-slate-200">${d.type}</strong></div>
+              <div><span class="text-slate-500">วันที่เกิดเหตุ:</span> <strong class="text-slate-800 dark:text-slate-200">${d.date}</strong></div>
+              <div><span class="text-slate-500">วงเงินช่วยเหลือ:</span> <strong class="text-emerald-600 font-bold">${d.amount ? Number(d.amount).toLocaleString() + ' บาท' : 'รอพิจารณา'}</strong></div>
+            </div>
+
+            <div class="pt-4 border-t dark:border-slate-700">
+              <h4 class="font-bold text-sm mb-4 text-blue-900 dark:text-blue-400"><i class="fa-solid fa-timeline mr-2"></i> ประวัติเส้นเวลาคำร้อง (Timeline)</h4>
+              <div class="space-y-4 pl-2">${timelineHtml || '<p class="text-xs text-slate-400">ยังไม่มีประวัติการอัปเดต</p>'}</div>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = '<div class="card-box p-6 text-center text-red-600 font-semibold">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</div>';
+      }
+    }
+
+    // Admin Operations
+    async function adminLogin() {
+      const apiKey = document.getElementById('adminApiKeyInput').value.trim();
+      if (!apiKey) {
+        showToast('กรุณากรอก Admin API Key', 'warning');
+        return;
+      }
+      adminApiKey = apiKey;
+      try {
+        await loadAdminDashboardData();
+        document.getElementById('adminLoginBox').classList.add('hidden');
+        document.getElementById('adminDashboardContent').classList.remove('hidden');
+        showToast('เข้าสู่ระบบเจ้าหน้าที่สำเร็จ', 'success');
+      } catch (err) {
+        showToast(err.message || 'API Key ไม่ถูกต้อง', 'error');
+      }
+    }
+
+    function adminLogout() {
+      adminApiKey = '';
+      allAdminRecords = [];
+      document.getElementById('adminDashboardContent').classList.add('hidden');
+      document.getElementById('adminLoginBox').classList.remove('hidden');
+      document.getElementById('adminApiKeyInput').value = '';
+      showToast('ออกจากระบบแล้ว', 'info');
+    }
+
+    let adminApiKey = '';
+    async function loadAdminDashboardData() {
+      renderAdminSkeletonTable();
+      const res = await apiGet('adminData', { apiKey: adminApiKey });
+      if (res.status !== 'success') throw new Error(res.message || 'โหลดข้อมูลไม่สำเร็จ');
+
+      adminRecordsCache = res.data || [];
+      populateAdminFilterDropdowns();
+      applyAdminFilters();
+      document.getElementById('dashboardLastUpdated').textContent = 'อัปเดตล่าสุด: ' + new Date().toLocaleString('th-TH');
+    }
+
+    function renderAdminSkeletonTable() {
+      const tbody = document.getElementById('adminTableBody');
+      tbody.innerHTML = Array(4).fill(0).map(() => `
+        <tr>
+          <td class="p-3"><div class="skeleton h-4 w-24"></div></td>
+          <td class="p-3"><div class="skeleton h-4 w-32"></div></td>
+          <td class="p-3"><div class="skeleton h-4 w-28"></div></td>
+          <td class="p-3"><div class="skeleton h-4 w-24"></div></td>
+          <td class="p-3"><div class="skeleton h-4 w-20"></div></td>
+          <td class="p-3 text-center"><div class="skeleton h-5 w-16 mx-auto rounded-full"></div></td>
+          <td class="p-3"><div class="skeleton h-4 w-16"></div></td>
+          <td class="p-3 text-center"><div class="skeleton h-8 w-20 mx-auto rounded-xl"></div></td>
+        </tr>
+      `).join('');
+    }
+
+    function populateAdminFilterDropdowns() {
+      const disasters = [...new Set(adminRecordsCache.map(r => r.Disaster_Type).filter(Boolean))].sort();
+      const provinces = [...new Set(adminRecordsCache.map(r => r.Province).filter(Boolean))].sort();
+
+      document.getElementById('filterDisasterSelect').innerHTML = '<option value="">ทุกประเภทภัยพิบัติ</option>' + disasters.map(d => `<option value="${d}">${d}</option>`).join('');
+      document.getElementById('filterProvinceSelect').innerHTML = '<option value="">ทุกจังหวัด</option>' + provinces.map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+
+    function resetAdminFilters() {
+      document.getElementById('adminSearchInput').value = '';
+      document.getElementById('filterStatusSelect').value = '';
+      document.getElementById('filterDisasterSelect').value = '';
+      document.getElementById('filterProvinceSelect').value = '';
+      applyAdminFilters();
+    }
+
+    function applyAdminFilters() {
+      const query = document.getElementById('adminSearchInput').value.trim().toLowerCase();
+      const status = document.getElementById('filterStatusSelect').value;
+      const disaster = document.getElementById('filterDisasterSelect').value;
+      const province = document.getElementById('filterProvinceSelect').value;
+
+      filteredAdminRecords = adminRecordsCache.filter(r => {
+        const text = [r.Tracking_ID, r.First_Name, r.Last_Name, r.Province, r.Disaster_Type].join(' ').toLowerCase();
+        return (!query || text.includes(query)) && (!status || r.Status === status) && (!disaster || r.Disaster_Type === disaster) && (!province || r.Province === province);
+      });
+
+      updateAdminKpis(filteredAdminRecords);
+      renderAdminTable(filteredAdminRecords);
+      renderAdminCharts(filteredAdminRecords);
+      updateAdminMapMarkers(filteredAdminRecords);
+
+      document.getElementById('adminRecordCountLabel').textContent = `แสดง ${filteredAdminRecords.length} จาก ${adminRecordsCache.length} รายการ`;
+    }
+
+    function updateAdminKpis(records) {
+      const total = records.length;
+      const pending = records.filter(r => r.Status === 'รอดำเนินการ').length;
+      const approved = records.filter(r => r.Status === 'อนุมัติ');
+      const approvedCount = approved.length;
+      const budget = approved.reduce((sum, r) => sum + (Number(String(r.Approved_Amount || 0).replace(/,/g, '')) || 0), 0);
+
+      document.getElementById('kpiTotal').textContent = total.toLocaleString();
+      document.getElementById('kpiPending').textContent = pending.toLocaleString();
+      document.getElementById('kpiApproved').textContent = approvedCount.toLocaleString();
+      document.getElementById('kpiBudget').textContent = budget.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' บาท';
+    }
+
+    function renderAdminTable(records) {
+      const tbody = document.getElementById('adminTableBody');
+      if (!records.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-slate-500 font-semibold">ไม่พบข้อมูลคำร้องตามเงื่อนไข</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = records.map(r => {
+        const fullName = [r.Prefix, r.First_Name, r.Last_Name].filter(Boolean).join(' ');
+        const locationStr = [r.Sub_District, r.District, r.Province].filter(Boolean).join(' / ');
+        const statusMap = { 'อนุมัติ': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300', 'รอดำเนินการ': 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300', 'ตรวจสอบแล้ว': 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300', 'ไม่อนุมัติ': 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300' };
+
+        return `
+          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">${r.Tracking_ID}</td>
+            <td class="p-3 font-semibold">${fullName}</td>
+            <td class="p-3">${r.Disaster_Type}</td>
+            <td class="p-3 text-xs text-slate-500">${locationStr}</td>
+            <td class="p-3 text-xs">${r.Disaster_Date || '-'}</td>
+            <td class="p-3 text-center"><span class="px-2.5 py-1 rounded-full text-xs font-bold ${statusMap[r.Status] || 'bg-slate-100 text-slate-700'}">${r.Status}</span></td>
+            <td class="p-3 font-bold text-emerald-600">${r.Approved_Amount ? Number(r.Approved_Amount).toLocaleString() + ' ฿' : '-'}</td>
+            <td class="p-3 text-center space-x-1">
+              <button type="button" onclick="openAdminModal('${r.Tracking_ID}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">จัดการ</button>
+              <button type="button" onclick="triggerPdfExport('${r.Tracking_ID}')" class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm" title="สร้าง PDF"><i class="fa-solid fa-file-pdf"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderAdminCharts(records) {
+      const statuses = ['รอดำเนินการ', 'ตรวจสอบแล้ว', 'อนุมัติ', 'ไม่อนุมัติ'];
+      const statusCounts = statuses.map(s => records.filter(r => r.Status === s).length);
+
+      const disasterMap = {};
+      records.forEach(r => {
+        const t = r.Disaster_Type || 'ไม่ระบุ';
+        disasterMap[t] = (disasterMap[t] || 0) + 1;
+      });
+
+      if (statusChartInstance) statusChartInstance.destroy();
+      if (disasterChartInstance) disasterChartInstance.destroy();
+
+      statusChartInstance = new Chart(document.getElementById('adminStatusChart'), {
+        type: 'bar',
+        data: {
+          labels: statuses,
+          datasets: [{ label: 'จำนวนคำร้อง', data: statusCounts, backgroundColor: ['#f59e0b', '#2563eb', '#16a34a', '#dc2626'], borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+
+      disasterChartInstance = new Chart(document.getElementById('adminDisasterChart'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(disasterMap),
+          datasets: [{ data: Object.values(disasterMap), backgroundColor: ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      });
+    }
+
+    function initializeGisMap() {
+      if (leafletMapInstance) {
+        leafletMapInstance.invalidateSize();
+        return;
+      }
+      leafletMapInstance = L.map('map').setView([13.7563, 100.5018], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(leafletMapInstance);
+    }
+
+    function updateAdminMapMarkers(records) {
+      initializeGisMap();
+      mapMarkersList.forEach(m => leafletMapInstance.removeLayer(m));
+      mapMarkersList = [];
+
+      const bounds = [];
+      records.forEach(r => {
+        const lat = Number(r.Latitude);
+        const lng = Number(r.Longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return;
+
+        const marker = L.marker([lat, lng]).addTo(leafletMapInstance);
+        marker.bindPopup(`<b>${r.Tracking_ID}</b><br>${r.First_Name || ''} ${r.Last_Name || ''}<br>ภัย: ${r.Disaster_Type}<br>สถานะ: ${r.Status}`);
+        mapMarkersList.push(marker);
+        bounds.push([lat, lng]);
+      });
+
+      if (bounds.length > 0) leafletMapInstance.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    }
+
+    // Modal Admin Action
+    async function openAdminModal(trackingId) {
+      currentSelectedTrackingId = trackingId;
+      const record = adminRecordsCache.find(r => r.Tracking_ID === trackingId);
+      if (!record) return;
+
+      document.getElementById('modalTrackingTitle').textContent = 'จัดการคำร้อง: ' + trackingId;
+      document.getElementById('modalStatusSelect').value = record.Status || 'รอดำเนินการ';
+      document.getElementById('modalAmountInput').value = record.Approved_Amount || '';
+      document.getElementById('modalCommentInput').value = record.Officer_Comment || '';
+
+      const body = document.getElementById('modalContentBody');
+      body.innerHTML = `
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl">
+          <div><span class="text-slate-500">ผู้ยื่น:</span> <strong>${record.Prefix}${record.First_Name} ${record.Last_Name}</strong></div>
+          <div><span class="text-slate-500">เบอร์โทร:</span> <strong>${record.Phone}</strong></div>
+          <div><span class="text-slate-500">ประเภทภัย:</span> <strong class="text-orange-600">${record.Disaster_Type}</strong></div>
+          <div><span class="text-slate-500">ระดับเสียหาย:</span> <strong>${record.House_Damage_Level}</strong></div>
+          <div class="col-span-2"><span class="text-slate-500">ที่อยู่:</span> ${record.Address} ต.${record.Sub_District} อ.${record.District} จ.${record.Province} ${record.Zipcode}</div>
+          <div class="col-span-2 flex gap-3 pt-2">
+            ${record.Damage_Photos_URL && record.Damage_Photos_URL !== '-' ? `<a href="${record.Damage_Photos_URL}" target="_blank" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border font-bold"><i class="fa-solid fa-image mr-1"></i> โฟลเดอร์รูปภาพ</a>` : ''}
+            ${record.Official_Docs_URL && record.Official_Docs_URL !== '-' ? `<a href="${record.Official_Docs_URL}" target="_blank" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border font-bold"><i class="fa-solid fa-file-pdf mr-1"></i> โฟลเดอร์เอกสาร</a>` : ''}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('adminActionModal').classList.remove('hidden');
+    }
+
+    function closeAdminModal() {
+      document.getElementById('adminActionModal').classList.add('hidden');
+      currentSelectedTrackingId = '';
+    }
+
+    async function saveAdminActionChanges() {
+      if (!currentSelectedTrackingId) return;
+      const status = document.getElementById('modalStatusSelect').value;
+      const amount = document.getElementById('modalAmountInput').value;
+      const comment = document.getElementById('modalCommentInput').value;
+
+      try {
+        const res = await apiPost({
+          action: 'updateStatus',
+          apiKey: adminApiKey,
+          trackingId: currentSelectedTrackingId,
+          status: status,
+          amount: status === 'อนุมัติ' ? amount : 0,
+          comment: comment
+        });
+        if (res.status !== 'success') throw new Error(res.message || 'อัปเดตไม่สำเร็จ');
+
+        showToast('อัปเดตสถานะเรียบร้อยแล้ว', 'success');
+        closeAdminModal();
+        loadAdminDashboardData();
+      } catch (err) {
+        showToast(err.message || 'เกิดข้อผิดพลาด', 'error');
+      }
+    }
+
+    async function triggerPdfExport(trackingId) {
+      try {
+        showToast('กำลังสร้างเอกสาร PDF...', 'info');
+        const res = await apiPost({ action: 'generatePDF', apiKey: adminApiKey, trackingId: trackingId });
+        if (res.status !== 'success') throw new Error(res.message || 'สร้าง PDF ไม่สำเร็จ');
+
+        window.open(res.url, '_blank', 'noopener,noreferrer');
+        showToast('สร้างเอกสาร PDF สำเร็จ', 'success');
+      } catch (err) {
+        showToast(err.message || 'เกิดข้อผิดพลาดในการสร้าง PDF', 'error');
+      }
+    }
+
+    async function exportData(format) {
+      try {
+        showToast('กำลังจัดเตรียมไฟล์ Export...', 'info');
+        const filters = {
+          keyword: document.getElementById('adminSearchInput').value.trim(),
+          status: document.getElementById('filterStatusSelect').value,
+          disasterType: document.getElementById('filterDisasterSelect').value,
+          province: document.getElementById('filterProvinceSelect').value
+        };
+
+        const actionName = format === 'csv' ? 'exportFilteredCsv' : 'exportFilteredExcel';
+        const res = await apiPost({ action: actionName, apiKey: adminApiKey, filters: filters });
+        if (res.status !== 'success') throw new Error(res.message || 'Export ไม่สำเร็จ');
+
+        window.open(res.url, '_blank', 'noopener,noreferrer');
+        showToast('ดาวน์โหลดไฟล์ ' + format.toUpperCase() + ' สำเร็จ', 'success');
+      } catch (err) {
+        showToast(err.message || 'เกิดข้อผิดพลาดในการ Export', 'error');
+      }
+    }
+  </script>
+</body>
+</html>
