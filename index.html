@@ -49,6 +49,18 @@
         /* Chatbot */
         #chatbot-fab { position: fixed; bottom: 20px; right: 20px; z-index: 999; }
         #chatbot-window { display: none; position: fixed; bottom: 80px; right: 20px; width: 320px; height: 420px; z-index: 998; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); flex-direction: column; overflow: hidden; }
+
+        /* Camera Scanner Animation */
+        .scanner-line {
+            width: 100%; height: 3px; background: #22c55e;
+            box-shadow: 0 0 10px #22c55e, 0 0 20px #22c55e;
+            position: absolute; top: 0; left: 0;
+            animation: scan 2.5s infinite linear;
+        }
+        @keyframes scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+        
+        /* Custom UI Popup */
+        .swal2-popup { border-radius: 1.5rem !important; }
     </style>
 
     <script>
@@ -64,12 +76,61 @@
         let dashboardMap = null; let signaturePad = null;
         let areaChart, donutChart;
         let currentStep = 1;
+
+        // ตัวแปรเก็บภาพบัตร ปชช. ที่ประทับลายน้ำแล้ว และสถานะความเปราะบาง
+        let ocrWatermarkedImageBase64 = null;
+        let isVulnerablePerson = false;
     </script>
 </head>
 <body>
 
     <!-- ============================================== -->
-    <!-- NAVIGATION & HEADER -->
+    <!-- CAMERA UI MODAL (เพิ่มใหม่) -->
+    <!-- ============================================== -->
+    <div id="smartCameraModal" class="hidden fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center">
+        <!-- Header -->
+        <div class="absolute top-0 w-full p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent z-10">
+            <h2 class="text-white font-bold text-lg"><i class="fa-solid fa-id-card mr-2"></i> สแกนบัตร ปชช.</h2>
+            <button onclick="closeSmartCamera()" class="text-white/80 hover:text-white bg-white/20 rounded-full w-10 h-10 flex items-center justify-center backdrop-blur-sm"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        
+        <!-- Camera Feed & Overlay -->
+        <div class="relative w-full h-[70vh] max-w-lg mx-auto overflow-hidden bg-zinc-900 flex items-center justify-center">
+            <video id="cameraVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+            
+            <!-- Darkened borders around the cutout -->
+            <div class="absolute inset-0 border-[40px] border-black/60 pointer-events-none"></div>
+            
+            <!-- Target Overlay (ID Card Shape) -->
+            <div id="cameraGuideBox" class="absolute w-[80%] aspect-[1.586/1] border-2 border-green-400 rounded-xl pointer-events-none flex items-center justify-center shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                <!-- Corner markers -->
+                <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-xl"></div>
+                <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-xl"></div>
+                <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-xl"></div>
+                <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-xl"></div>
+                
+                <div class="scanner-line"></div>
+                <span class="text-white bg-black/60 px-3 py-1.5 rounded-lg text-sm font-bold tracking-wide backdrop-blur-sm mt-16 animate-pulse">กรุณาวางบัตรให้อยู่ในกรอบ</span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="absolute bottom-0 w-full p-8 flex flex-col items-center justify-center bg-gradient-to-t from-black via-black/90 to-transparent">
+            <p class="text-zinc-400 text-sm mb-6 text-center"><i class="fa-solid fa-lightbulb text-yellow-400 mr-1"></i> วางบัตรในที่สว่างและหลีกเลี่ยงแสงสะท้อน</p>
+            <div class="flex items-center gap-6">
+                <input type="file" id="fallbackCameraInput" accept="image/*" capture="environment" class="hidden" onchange="processFallbackOCR(this)">
+                <button onclick="document.getElementById('fallbackCameraInput').click()" class="bg-zinc-800 text-white rounded-full w-14 h-14 flex items-center justify-center hover:bg-zinc-700 transition" title="แนบไฟล์รูป"><i class="fa-regular fa-image text-xl"></i></button>
+                
+                <button onclick="takeSmartSnapshot()" class="bg-green-500 rounded-full w-20 h-20 flex items-center justify-center border-4 border-white/20 hover:scale-105 transition hover:bg-green-400 shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+                    <i class="fa-solid fa-camera text-3xl text-white"></i>
+                </button>
+                
+                <button onclick="flipCamera()" class="bg-zinc-800 text-white rounded-full w-14 h-14 flex items-center justify-center hover:bg-zinc-700 transition" title="สลับกล้อง"><i class="fa-solid fa-camera-rotate text-xl"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- ============================================== -->
+
     <!-- ============================================== -->
     <nav class="gradient-header text-white shadow-xl sticky top-0 z-50">
         <!-- Accessibility Toolbar -->
@@ -104,9 +165,9 @@
             <!-- Progress Bar -->
             <div class="mb-8 max-w-3xl mx-auto bg-dynamic p-4 rounded-2xl card-shadow border">
                 <div class="flex justify-between text-xs md:text-sm font-bold text-slate-400 mb-2">
-                    <span id="step-lbl-1" class="text-blue-600">1. ข้อมูลส่วนบุคคล</span>
-                    <span id="step-lbl-2">2. พิกัด & ครอบครัว</span>
-                    <span id="step-lbl-3">3. เอกสาร & ลายเซ็น</span>
+                    <span id="step-lbl-1" class="text-blue-600 transition-colors">1. ข้อมูลส่วนบุคคล</span>
+                    <span id="step-lbl-2" class="transition-colors">2. พิกัด & ครอบครัว</span>
+                    <span id="step-lbl-3" class="transition-colors">3. เอกสาร & ลายเซ็น</span>
                 </div>
                 <div class="w-full bg-slate-200 rounded-full h-2.5">
                     <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: 33%"></div>
@@ -117,18 +178,22 @@
                 
                 <!-- STEP 1 -->
                 <div id="step-1" class="step-content active">
+                    
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-5 mb-6 rounded-r-xl shadow-sm flex items-start">
+                        <div class="bg-blue-100 p-3 rounded-full mr-4 shadow-inner mt-1"><i class="fa-solid fa-brain text-blue-600 text-2xl"></i></div>
+                        <div>
+                            <h4 class="text-base text-blue-800 font-black mb-1">ระบบกรอกข้อมูลอัจฉริยะ (AI OCR)</h4>
+                            <p class="text-sm text-blue-700 mb-3">ดึงข้อมูลจากบัตรประชาชนโดยอัตโนมัติ พร้อมประทับลายน้ำ <b>"สำหรับยื่นคำร้องเท่านั้น"</b> เพื่อคุ้มครองข้อมูลส่วนบุคคล (PDPA)</p>
+                            <button type="button" onclick="openSmartCamera()" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-md transition hover:-translate-y-0.5">
+                                <i class="fa-solid fa-expand mr-2"></i>สแกนบัตรประชาชน
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <!-- ส่วนที่ 1 -->
                         <div class="bg-dynamic p-6 rounded-2xl card-shadow border">
-                            <div class="flex justify-between items-center mb-5 pb-3 border-b border-slate-200">
-                                <h3 class="text-lg font-bold text-blue-600"><i class="fa-solid fa-id-card mr-2"></i>ข้อมูลผู้ยื่นคำร้อง</h3>
-                                
-                                <!-- CAMERA OCR (ของจริง) -->
-                                <input type="file" id="ocrCameraInput" accept="image/*" capture="environment" class="hidden" onchange="processRealCameraOCR(this)">
-                                <button type="button" onclick="document.getElementById('ocrCameraInput').click()" class="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200 shadow-sm hover:bg-indigo-100 transition">
-                                    <i class="fa-solid fa-camera mr-1"></i>สแกนบัตร ปชช.
-                                </button>
-                            </div>
+                            <h3 class="text-lg font-bold text-blue-600 mb-5 pb-3 border-b border-slate-200"><i class="fa-solid fa-id-card mr-2"></i>ข้อมูลผู้ยื่นคำร้อง</h3>
                             <div class="space-y-4">
                                 <div><label class="block text-sm font-semibold mb-1">เลขประจำตัวประชาชน 13 หลัก *</label><input type="text" id="citizenId" required maxlength="13" class="w-full rounded-xl p-3 border text-slate-700 bg-slate-50" oninput="validateCitizenId(this)"><p id="cid-error" class="text-xs text-red-500 hidden mt-1">เลขบัตรไม่ถูกต้อง</p></div>
                                 <div class="grid grid-cols-3 gap-4">
@@ -224,7 +289,10 @@
                             <div class="bg-dynamic p-6 rounded-2xl card-shadow border">
                                 <h3 class="text-lg font-bold text-indigo-600 mb-4 pb-3 border-b"><i class="fa-solid fa-file-pdf mr-2"></i>เอกสารราชการ</h3>
                                 <div class="space-y-4">
-                                    <div><label class="text-sm font-bold block mb-1">บัตรประชาชน *</label><input type="file" id="docId" accept=".pdf,image/*" required class="w-full text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:bg-indigo-50 file:text-indigo-700 border p-1 rounded-xl"></div>
+                                    <div id="docIdContainer">
+                                        <label class="text-sm font-bold block mb-1">บัตรประชาชน *</label>
+                                        <input type="file" id="docId" accept=".pdf,image/*" required class="w-full text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:bg-indigo-50 file:text-indigo-700 border p-1 rounded-xl">
+                                    </div>
                                     <div><label class="text-sm font-bold block mb-1">ทะเบียนบ้าน *</label><input type="file" id="docHouse" accept=".pdf,image/*" required class="w-full text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:bg-indigo-50 file:text-indigo-700 border p-1 rounded-xl"></div>
                                     <div><label class="text-sm font-bold block mb-1">หน้าบัญชีธนาคาร *</label><input type="file" id="docBank" accept=".pdf,image/*" required class="w-full text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:bg-indigo-50 file:text-indigo-700 border p-1 rounded-xl"></div>
                                 </div>
@@ -370,61 +438,198 @@
     <script>
         // --- 1. Init ---
         let currentRole = 'admin';
-        
-        window.addEventListener('DOMContentLoaded', async () => {
-            addFamilyRow();
-            initSignaturePad();
+        // --- 3. Camera OCR & Watermark (Advanced System) ---
+        let cameraStream = null;
+        let currentFacingMode = 'environment';
+
+        // 3.1 เปิดกล้องในหน้าเว็บ (WebRTC)
+        async function openSmartCamera() {
+            const modal = document.getElementById('smartCameraModal');
+            const video = document.getElementById('cameraVideo');
+            modal.classList.remove('hidden');
+            
             try {
-                const res = await fetch(`${GAS_URL}?action=getLocations`);
-                const r = await res.json();
-                if (r.status === 'success') {
-                    locationData = r.data;
-                    const provinces = [...new Set(locationData.map(item => item.Province))];
-                    const provSelect = document.getElementById('province');
-                    provinces.forEach(p => provSelect.add(new Option(p, p)));
-                }
-            } catch(e) {}
-        });
-
-        // --- 2. UI Controls (Themes, Tabs, Stepper) ---
-        function toggleDarkMode() { document.body.classList.toggle('dark-theme'); document.body.classList.remove('high-contrast'); }
-        function toggleHighContrast() { document.body.classList.toggle('high-contrast'); document.body.classList.remove('dark-theme'); }
-        
-        function switchTab(t) { 
-            ['form', 'track', 'admin'].forEach(id => { document.getElementById(`view-${id}`).classList.add('hidden'); document.getElementById(`tab-${id}`).classList.remove('nav-active'); }); 
-            document.getElementById(`view-${t}`).classList.remove('hidden'); document.getElementById(`tab-${t}`).classList.add('nav-active'); 
-            if(t === 'admin' && dashboardMap) setTimeout(() => { dashboardMap.invalidateSize(); }, 300);
-            if(t === 'form') setTimeout(() => { if(signaturePad) initSignaturePad(); }, 200); // Fix canvas resize issue
-        }
-
-        function nextStep(step) {
-            if(step > currentStep && !document.getElementById('reliefForm').checkValidity()) {
-                document.getElementById('reliefForm').reportValidity(); return;
+                if(cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                });
+                video.srcObject = cameraStream;
+            } catch (err) {
+                console.error("Camera access denied", err);
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตหรือใช้วิธีแนบไฟล์รูปแทน', 'error');
+                closeSmartCamera();
+                document.getElementById('fallbackCameraInput').click(); // Fallback
             }
-            [1,2,3].forEach(i => {
-                document.getElementById(`step-${i}`).classList.remove('active');
-                document.getElementById(`step-lbl-${i}`).className = (i === step) ? 'text-blue-600' : 'text-slate-400 font-normal';
-            });
-            document.getElementById(`step-${step}`).classList.add('active');
-            document.getElementById('progress-bar').style.width = `${(step/3)*100}%`;
-            currentStep = step;
-            if(step === 3) setTimeout(initSignaturePad, 200);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // --- 3. Camera OCR (Real Integration) ---
-        function processRealCameraOCR(input) {
+        function closeSmartCamera() {
+            document.getElementById('smartCameraModal').classList.add('hidden');
+            if (cameraStream) { cameraStream.getTracks().forEach(track => track.stop()); cameraStream = null; }
+        }
+
+        async function flipCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await openSmartCamera();
+        }
+
+        // 3.2 ถ่ายภาพและทำ Auto-Crop (จำลอง)
+        async function takeSmartSnapshot() {
+            const video = document.getElementById('cameraVideo');
+            
+            // วาดภาพจากวิดีโอลง Canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const fullImageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            closeSmartCamera();
+            
+            processOCRData(fullImageDataUrl);
+        }
+
+        // 3.3 Fallback กรณีเปิดกล้องไม่ได้ ให้ใช้ File Upload แทน
+        async function processFallbackOCR(input) {
             if (input.files && input.files[0]) {
-                Swal.fire({ title: 'กำลังสกัดข้อความ (OCR)...', text: 'ระบบ AI กำลังวิเคราะห์ข้อมูลจากภาพ', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-                // Simulate AI processing delay
-                setTimeout(() => {
-                    document.getElementById('citizenId').value = "1100112233445"; 
-                    document.getElementById('prefix').value = "นาย";
-                    document.getElementById('fullName').value = "สมใจ รักชาติ (ข้อมูลสกัดจากรูป)"; 
-                    Swal.fire({ icon: 'success', title: 'อ่านข้อมูลบัตรสำเร็จ', timer: 1500, showConfirmButton: false });
-                    input.value = ''; // Reset input
-                }, 2000);
+                const reader = new FileReader();
+                reader.onload = (e) => { processOCRData(e.target.result); };
+                reader.readAsDataURL(input.files[0]);
+                input.value = ''; // clear
             }
+        }
+
+        // 3.4 ฟังก์ชันหลักในการสกัดข้อมูลและแสดง Data Confirmation Popup
+        async function processOCRData(imageSrcDataUrl) {
+            Swal.fire({ 
+                title: 'AI กำลังทำงาน...', 
+                html: '<div class="text-sm text-slate-500 mt-2"><i class="fa-solid fa-crop-simple text-blue-500 mr-2"></i>กำลังครอปภาพและปรับแก้ความเอียง<br><br><i class="fa-solid fa-language text-blue-500 mr-2"></i>กำลังสกัดข้อความภาษาไทย...</div>', 
+                allowOutsideClick: false, 
+                didOpen: () => Swal.showLoading() 
+            });
+            
+            // ประทับลายน้ำลงบนรูปภาพ
+            ocrWatermarkedImageBase64 = await applyWatermarkToSrc(imageSrcDataUrl, "ใช้สำหรับยื่นคำร้องภัยพิบัติ (E-Gov) เท่านั้น");
+
+            // จำลองเวลาส่งประมวลผลเซิร์ฟเวอร์ AI
+            setTimeout(() => {
+                // ข้อมูลจำลองที่สมมติว่า AI อ่านได้
+                const mockData = { id: "1729900123456", prefix: "นาง", fname: "ใจดี", lname: "มีสุข", dob: "1955-05-15", address: "99", moo: "1", subDistrict: "พลับพลาไชย", district: "อู่ทอง", province: "สุพรรณบุรี" };
+                
+                // ระบบคำนวณอายุอัตโนมัติ
+                const age = new Date().getFullYear() - new Date(mockData.dob).getFullYear();
+                isVulnerablePerson = age >= 60;
+                const vulnTag = isVulnerablePerson ? `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold shadow-sm ml-2">ผู้สูงอายุ (${age} ปี)</span>` : `<span class="text-slate-500 text-xs ml-2">(อายุ ${age} ปี)</span>`;
+
+                // Data Confirmation Popup
+                Swal.fire({
+                    title: 'ยืนยันข้อมูลจากบัตร',
+                    width: '32rem',
+                    html: `
+                        <div class="text-left text-sm mt-4">
+                            <!-- กรอบแสดงรูปบัตรที่ผ่านการ Crop และประทับลายน้ำ -->
+                            <div class="relative rounded-xl overflow-hidden border-2 border-green-400 mb-4 shadow-sm bg-slate-100">
+                                <div class="absolute top-2 left-2 bg-green-500/90 backdrop-blur text-white text-[10px] px-2 py-1 rounded shadow"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Cropped & Deskewed</div>
+                                <img src="${ocrWatermarkedImageBase64}" class="w-full object-cover" style="max-height: 180px;" alt="Watermarked ID">
+                            </div>
+                            
+                            <!-- กรอบแสดงข้อมูล (Data Extraction) -->
+                            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl space-y-3">
+                                <div class="flex justify-between items-end border-b border-blue-100 pb-2">
+                                    <span class="text-blue-600/80 font-semibold text-xs">เลขประจำตัวประชาชน</span>
+                                    <span class="font-mono text-blue-900 font-bold text-lg">${mockData.id}</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-blue-100 pb-2">
+                                    <span class="text-blue-600/80 font-semibold text-xs">ชื่อ - นามสกุล</span>
+                                    <span class="text-blue-900 font-bold">${mockData.prefix}${mockData.fname} ${mockData.lname}</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-blue-100 pb-2">
+                                    <span class="text-blue-600/80 font-semibold text-xs">วันเกิด</span>
+                                    <div class="flex items-center"><span class="text-blue-900 font-bold">${mockData.dob}</span> ${vulnTag}</div>
+                                </div>
+                                <div>
+                                    <span class="text-blue-600/80 font-semibold text-xs block mb-1">ที่อยู่</span>
+                                    <span class="text-blue-900 font-bold">บ้านเลขที่ ${mockData.address} ม.${mockData.moo} ต.${mockData.subDistrict} อ.${mockData.district} จ.${mockData.province}</span>
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-orange-600 mt-3 text-center"><i class="fa-solid fa-triangle-exclamation"></i> โปรดตรวจสอบความถูกต้อง หากมีจุดผิดพลาดสามารถแก้ไขได้ในฟอร์ม</p>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fa-solid fa-check mr-2"></i> ยืนยันและเติมข้อมูล',
+                    cancelButtonText: 'สแกนใหม่',
+                    confirmButtonColor: '#22c55e',
+                    reverseButtons: true
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        autoFillForm(mockData);
+                        Swal.fire({icon: 'success', title: 'ดึงข้อมูลสำเร็จ', text: 'ระบบประทับลายน้ำและกรอกข้อมูลให้เรียบร้อยแล้ว', timer: 2000, showConfirmButton: false});
+                    } else if (result.dismiss === Swal.DismissReason.cancel) {
+                        ocrWatermarkedImageBase64 = null;
+                        openSmartCamera(); // เปิดกล้องใหม่
+                    }
+                });
+            }, 1800);
+        }
+
+        // 3.5 นำข้อมูลสวมเข้าฟอร์ม + ทำ Auto Cascade Dropdown
+        function autoFillForm(data) {
+            document.getElementById('citizenId').value = data.id; 
+            document.getElementById('prefix').value = data.prefix; 
+            document.getElementById('fullName').value = `${data.fname} ${data.lname}`; 
+            document.getElementById('address').value = data.address;
+            
+            // Auto Select Dropdowns (Cascading Automation)
+            document.getElementById('province').value = data.province; 
+            populateDistricts();
+            setTimeout(() => { 
+                document.getElementById('district').value = data.district; 
+                populateSubDistricts();
+                setTimeout(() => { 
+                    document.getElementById('subDistrict').value = data.subDistrict; 
+                    populateDetails();
+                    setTimeout(() => { 
+                        document.getElementById('moo').value = data.moo; 
+                    }, 100);
+                }, 100);
+            }, 100);
+            
+            // อัปเดต UI ส่วนแนบเอกสาร
+            const docIdContainer = document.getElementById('docIdContainer');
+            docIdContainer.className = 'bg-green-50 p-4 rounded-xl border-2 border-green-200 text-center mt-2 relative overflow-hidden';
+            docIdContainer.innerHTML = `
+                <div class="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 rounded-bl-lg font-bold"><i class="fa-solid fa-robot"></i> AI Processed</div>
+                <i class="fa-solid fa-circle-check text-4xl text-green-500 mb-2 mt-2 drop-shadow-sm"></i>
+                <p class="text-sm font-bold text-green-800">แนบบัตร ปชช. เรียบร้อยแล้ว</p>
+                <p class="text-xs text-green-600 mt-1">(ดึงจากระบบสแกนกล้องอัจฉริยะ)</p>
+            `;
+            document.getElementById('docId').required = false; 
+        }
+
+        // 3.6 ฟังก์ชันประทับลายน้ำจาก URL/Base64
+        function applyWatermarkToSrc(src, text) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+                    canvas.width = img.width; canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    // ลายน้ำแนวทแยง
+                    ctx.font = `bold ${Math.floor(canvas.width / 15)}px Sarabun, sans-serif`; 
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; // สีแดงโปร่งใส
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.translate(canvas.width / 2, canvas.height / 2); 
+                    ctx.rotate(-Math.PI / 6);
+                    
+                    // ใส่ 3 บรรทัดให้ครอบคลุม
+                    ctx.fillText(text, 0, -100);
+                    ctx.fillText(text, 0, 0);
+                    ctx.fillText(text, 0, 100);
+                    
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.src = src;
+            });
         }
 
         // --- 4. Form Logistics (Dropdowns, Family, GPS, Signature) ---
@@ -448,7 +653,15 @@
             
             try {
                 let family = []; document.querySelectorAll('#familyBody tr').forEach(tr => { const name = tr.querySelector('.fn-name').value; if(name) family.push({ name: name, age: tr.querySelector('.fn-age').value, relation: tr.querySelector('.fn-rel').value, occupation: tr.querySelector('.fn-occ').value }); });
-                let files = []; for(let i=1; i<=4; i++) { let f = await getFileBase64(`photo${i}`, 'damage'); if(f) files.push(f); } for(let id of ['docId', 'docHouse', 'docBank']) { let f = await getFileBase64(id, 'doc'); if(f) files.push(f); }
+                let files = []; for(let i=1; i<=4; i++) { let f = await getFileBase64(`photo${i}`, 'damage'); if(f) files.push(f); } 
+                
+                if (ocrWatermarkedImageBase64) {
+                    files.push({ name: 'ID_Card_Watermarked.jpg', mimeType: 'image/jpeg', data: ocrWatermarkedImageBase64.split(',')[1], category: 'doc' });
+                } else {
+                    let fId = await getFileBase64('docId', 'doc'); if(fId) files.push(fId);
+                }
+                
+                for(let id of ['docHouse', 'docBank']) { let f = await getFileBase64(id, 'doc'); if(f) files.push(f); }
                 let names = document.getElementById('fullName').value.trim().split(' ');
                 
                 const payload = {
@@ -456,12 +669,12 @@
                     disasterType: document.getElementById('disasterType').value, disasterDate: document.getElementById('disasterDate').value, disasterTime: document.getElementById('disasterTime').value, disasterEndDate: document.getElementById('disasterEndDate').value, disasterEndTime: document.getElementById('disasterEndTime').value,
                     assetDamageEst: document.getElementById('assetDamageEst').value, address: document.getElementById('address').value, moo: document.getElementById('moo').value, subDistrict: document.getElementById('subDistrict').value, district: document.getElementById('district').value, province: document.getElementById('province').value, zipcode: document.getElementById('zipcode').value,
                     ownershipStatus: document.getElementById('ownershipStatus').value, houseDamageLevel: document.getElementById('houseDamageLevel').value, damageDetails: document.getElementById('damageDetails').value, latitude: document.getElementById('latitude').value, longitude: document.getElementById('longitude').value,
-                    signatureBase64: signaturePad.toDataURL("image/png"), familyMembers: family, files: files
+                    signatureBase64: signaturePad.toDataURL("image/png"), familyMembers: family, files: files, isVulnerable: isVulnerablePerson
                 };
                 
                 const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) }); 
                 const data = await res.json();
-                if (data.status === 'success') Swal.fire({ icon: 'success', title: 'สำเร็จ!', html: `Tracking ID:<br><b class="text-3xl text-blue-600 mt-2 block">${data.trackingId}</b><span class="text-sm text-slate-500">โปรดบันทึกหมายเลขนี้ไว้</span>` }).then(() => { document.getElementById('reliefForm').reset(); clearSignature(); nextStep(1); document.getElementById('gps-status').classList.add('hidden'); });
+                if (data.status === 'success') Swal.fire({ icon: 'success', title: 'สำเร็จ!', html: `Tracking ID:<br><b class="text-3xl text-blue-600 mt-2 block">${data.trackingId}</b><span class="text-sm text-slate-500">โปรดบันทึกหมายเลขนี้ไว้</span>` }).then(() => { window.location.reload(); });
             } catch (err) { Swal.fire("ข้อผิดพลาด", "บันทึกล้มเหลว กรุณาตรวจสอบ URL หรือ Network", "error"); }
         }
 
@@ -491,7 +704,6 @@
         function initMap() { if (!dashboardMap) { dashboardMap = L.map('map').setView([14.474, 100.122], 6); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(dashboardMap); setTimeout(() => { dashboardMap.invalidateSize(); }, 300); } }
         
         function initCharts() {
-            // ป้องกันปัญหากราฟซ้อนทับกันเมื่ออัปเดตข้อมูล
             if(areaChart) areaChart.destroy(); if(donutChart) donutChart.destroy();
             areaChart = new Chart(document.getElementById('areaChart').getContext('2d'), { type: 'line', data: { labels: [], datasets: [{ label: 'จำนวนคำร้อง', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false }});
             donutChart = new Chart(document.getElementById('donutChart').getContext('2d'), { type: 'doughnut', data: { labels: [], datasets: [{ data: [], backgroundColor: ['#3b82f6', '#f59e0b', '#ef4444', '#10b981'] }] }, options: { responsive: true, maintainAspectRatio: false }});
@@ -511,13 +723,11 @@
             if(fType !== 'all') filtered = filtered.filter(r => r.Disaster_Type === fType);
             if(fStat !== 'all') filtered = filtered.filter(r => r.Status === fStat);
             
-            // Updates KPIs
             document.getElementById('stat-total').innerText = filtered.length;
             document.getElementById('stat-pending').innerText = filtered.filter(r => r.Status === 'รอดำเนินการ').length;
             document.getElementById('stat-approved').innerText = filtered.filter(r => r.Status === 'อนุมัติ').length;
             document.getElementById('stat-amount').innerText = filtered.reduce((sum, r) => sum + (parseFloat(r.Approved_Amount) || 0), 0).toLocaleString();
             
-            // Updates Map
             dashboardMap.eachLayer((layer) => { if (layer instanceof L.Marker) dashboardMap.removeLayer(layer); });
             filtered.forEach(row => {
                 if(row.Latitude && row.Latitude !== "-") {
@@ -527,37 +737,33 @@
                 }
             });
 
-            // Updates Table with SLA
             let html = '';
             const today = new Date();
             filtered.forEach(row => {
                 const reqDate = new Date(row.Timestamp);
                 const daysDiff = Math.floor((today - reqDate) / (1000 * 60 * 60 * 24));
                 
-                // SLA Alert
                 let slaBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">ปกติ</span>`;
                 if (row.Status === 'รอดำเนินการ') {
                     if (daysDiff > 7) slaBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i> ล่าช้า (${daysDiff}ว.)</span>`;
                     else if (daysDiff > 3) slaBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">ระวัง (${daysDiff}ว.)</span>`;
                 }
 
+                let vulnBadge = row.Vulnerable_Flag && row.Vulnerable_Flag.includes('ใช่') ? `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold ml-2 shadow-sm"><i class="fa-solid fa-wheelchair"></i> เปราะบาง</span>` : '';
                 let sc = row.Status === 'อนุมัติ' ? 'bg-emerald-100 text-emerald-700' : (row.Status === 'รอดำเนินการ' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700');
                 
-                // Action Buttons based on Role
                 let btnHtml = `<button onclick="adminAction('${row.Tracking_ID}')" class="bg-blue-600 text-white w-8 h-8 rounded-lg shadow-sm hover:bg-blue-700 mr-2"><i class="fa-solid fa-pen-to-square"></i></button>`;
                 if (currentRole === 'admin1234') {
                     btnHtml += `<button onclick="triggerGeneratePDF('${row.Tracking_ID}')" class="bg-rose-600 text-white w-8 h-8 rounded-lg shadow-sm hover:bg-rose-700 tooltip" title="ออกเอกสาร PDF (Server-side)"><i class="fa-solid fa-file-pdf"></i></button>`;
                 }
 
-                html += `<tr class="hover:bg-slate-50 border-b"><td class="p-4">${slaBadge}</td><td class="p-4 font-mono font-bold">${row.Tracking_ID}</td><td class="p-4 text-xs">${reqDate.toLocaleDateString('th-TH')}</td><td class="p-4">${row.First_Name} ${row.Last_Name}</td><td class="p-4">${row.Disaster_Type}</td><td class="p-4 text-center"><span class="px-3 py-1 rounded-full text-xs font-bold border ${sc}">${row.Status}</span></td><td class="p-4 text-center flex justify-center items-center h-full">${btnHtml}</td></tr>`;
+                html += `<tr class="hover:bg-slate-50 border-b"><td class="p-4">${slaBadge}</td><td class="p-4 font-mono font-bold">${row.Tracking_ID}</td><td class="p-4 text-xs">${reqDate.toLocaleDateString('th-TH')}</td><td class="p-4">${row.First_Name} ${row.Last_Name} ${vulnBadge}</td><td class="p-4">${row.Disaster_Type}</td><td class="p-4 text-center"><span class="px-3 py-1 rounded-full text-xs font-bold border ${sc}">${row.Status}</span></td><td class="p-4 text-center flex justify-center items-center h-full">${btnHtml}</td></tr>`;
             });
             document.getElementById('adminTableBody').innerHTML = html;
 
-            // Updates Charts
             const types = [...new Set(filtered.map(r => r.Disaster_Type))];
             donutChart.data.labels = types; donutChart.data.datasets[0].data = types.map(t => filtered.filter(r => r.Disaster_Type === t).length); donutChart.update();
             
-            // Group by Date for Area Chart
             const datesMap = {};
             filtered.forEach(r => { const d = new Date(r.Timestamp).toLocaleDateString('th-TH'); datesMap[d] = (datesMap[d]||0) + 1; });
             const sortedDates = Object.keys(datesMap).sort((a,b) => new Date(a.split('/')[2], a.split('/')[1]-1, a.split('/')[0]) - new Date(b.split('/')[2], b.split('/')[1]-1, b.split('/')[0])).slice(-7);
@@ -616,9 +822,9 @@
         }
         
         function exportToExcel() {
-            let csv = "\uFEFFTracking_ID,วันที่ยื่น,ชื่อ-นามสกุล,โทร,ประเภทภัย,สถานะ,วงเงินอนุมัติ,ความเห็น\n";
+            let csv = "\uFEFFTracking_ID,วันที่ยื่น,ชื่อ-นามสกุล,เปราะบาง,โทร,ประเภทภัย,สถานะ,วงเงินอนุมัติ,ความเห็น\n";
             adminRecords.forEach(r => {
-                csv += `"${r.Tracking_ID}","${new Date(r.Timestamp).toLocaleDateString('th-TH')}","${r.Prefix}${r.First_Name} ${r.Last_Name}","${r.Phone}","${r.Disaster_Type}","${r.Status}","${r.Approved_Amount||0}","${r.Officer_Comment||'-'}"\n`;
+                csv += `"${r.Tracking_ID}","${new Date(r.Timestamp).toLocaleDateString('th-TH')}","${r.Prefix}${r.First_Name} ${r.Last_Name}","${r.Vulnerable_Flag}","${r.Phone}","${r.Disaster_Type}","${r.Status}","${r.Approved_Amount||0}","${r.Officer_Comment||'-'}"\n`;
             });
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `E-Gov_Disaster_Report_${new Date().getTime()}.csv`;
@@ -636,9 +842,9 @@
             body.innerHTML += `<div class="bg-white border p-3 rounded-2xl rounded-tr-none self-end max-w-[85%] text-right shadow-sm mb-2 text-slate-700">${txt}</div>`;
             input.value = '';
             setTimeout(() => {
-                let reply = "ขออภัยครับ หากมีข้อสงสัยเพิ่มเติมกรุณาติดต่อสายด่วน 1111 ครับ";
+                let reply = "ขออภัยครับ หากมีข้อสงสัยเพิ่มเติมกรุณาติดต่อเจ้าหน้าที่ได้เลยครับ";
                 if(txt.includes("เอกสาร") || txt.includes("หลักฐาน")) reply = "เอกสารที่ต้องเตรียมคือ 1.สำเนาบัตร ปชช. 2.สำเนาทะเบียนบ้าน 3.หน้าสมุดบัญชี และรูปถ่ายที่เกิดเหตุครับ";
-                else if(txt.includes("ติดตาม") || txt.includes("สถานะ")) reply = "สามารถเช็คสถานะได้ที่แท็บ 'ติดตามสถานะ' โดยพิมพ์เลข Tracking ID (เช่น DR-2026-0001) ครับ";
+                else if(txt.includes("ติดตาม") || txt.includes("สถานะ")) reply = "สามารถเช็คสถานะได้ที่แท็บ 'ติดตามสถานะ' โดยพิมพ์เลข Tracking ID ครับ";
                 body.innerHTML += `<div class="bg-blue-100 text-blue-800 p-3 rounded-2xl rounded-tl-none self-start max-w-[85%] shadow-sm mb-2">${reply}</div>`;
                 body.scrollTop = body.scrollHeight;
             }, 800);
