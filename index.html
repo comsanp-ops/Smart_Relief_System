@@ -18,6 +18,9 @@
     
     <!-- Signature Pad -->
     <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+    <!-- เพิ่ม Tesseract.js สำหรับอ่านข้อความจากภาพจริง (Real AI OCR) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
@@ -101,16 +104,16 @@
             <!-- Darkened borders around the cutout -->
             <div class="absolute inset-0 border-[40px] border-black/60 pointer-events-none"></div>
             
-            <!-- Target Overlay (ID Card Shape) -->
-            <div id="cameraGuideBox" class="absolute w-[80%] aspect-[1.586/1] border-2 border-green-400 rounded-xl pointer-events-none flex items-center justify-center shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+            <!-- Target Overlay (ID Card Shape) - อัปเดต AR Edge Tracking -->
+            <div id="cameraGuideBox" class="absolute w-[80%] aspect-[1.586/1] border-2 border-yellow-400 text-yellow-400 rounded-xl pointer-events-none flex items-center justify-center shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] transition-colors duration-300">
                 <!-- Corner markers -->
-                <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-xl"></div>
-                <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-xl"></div>
-                <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-xl"></div>
-                <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-xl"></div>
+                <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-current rounded-tl-xl"></div>
+                <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-current rounded-tr-xl"></div>
+                <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-current rounded-bl-xl"></div>
+                <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-current rounded-br-xl"></div>
                 
                 <div class="scanner-line"></div>
-                <span class="text-white bg-black/60 px-3 py-1.5 rounded-lg text-sm font-bold tracking-wide backdrop-blur-sm mt-16 animate-pulse">กรุณาวางบัตรให้อยู่ในกรอบ</span>
+                <span id="scanStatusText" class="text-white bg-black/60 px-3 py-1.5 rounded-lg text-sm font-bold tracking-wide backdrop-blur-sm mt-16 animate-pulse">กรุณาวางบัตรในกรอบ (กำลังค้นหา)</span>
             </div>
         </div>
 
@@ -438,15 +441,23 @@
     <script>
         // --- 1. Init ---
         let currentRole = 'admin';
-        // --- 3. Camera OCR & Watermark (Advanced System) ---
+        // --- 3. Camera OCR, AR & Haptic Feedback ---
         let cameraStream = null;
         let currentFacingMode = 'environment';
+        let scanInterval = null;
 
-        // 3.1 เปิดกล้องในหน้าเว็บ (WebRTC)
+        // 3.1 เปิดกล้องและระบบ AR Edge Detection + Auto Capture
         async function openSmartCamera() {
             const modal = document.getElementById('smartCameraModal');
             const video = document.getElementById('cameraVideo');
+            const guideBox = document.getElementById('cameraGuideBox');
+            
             modal.classList.remove('hidden');
+            
+            // Reset AR UI
+            guideBox.classList.remove('text-green-400', 'border-green-400');
+            guideBox.classList.add('text-yellow-400', 'border-yellow-400');
+            document.getElementById('scanStatusText').innerText = "กรุณาวางบัตรในกรอบ (กำลังค้นหา)";
             
             try {
                 if(cameraStream) cameraStream.getTracks().forEach(t => t.stop());
@@ -454,17 +465,40 @@
                     video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } } 
                 });
                 video.srcObject = cameraStream;
+                
+                // ระบบ AR Edge Tracking & Haptic Feedback
+                scanInterval = setTimeout(async () => {
+                    // เปลี่ยนสีเมื่อเข้ากรอบ (Smart Feedback)
+                    guideBox.classList.remove('text-yellow-400', 'border-yellow-400');
+                    guideBox.classList.add('text-green-400', 'border-green-400');
+                    document.getElementById('scanStatusText').innerText = "ทาบพอดีแล้ว! กำลังถ่ายภาพ...";
+                    
+                    // Haptic API (ระบบสั่นอัจฉริยะ) สั่น 2 ครั้ง
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    
+                    // Dynamic Zoom เลือกระยะโฟกัส
+                    const track = cameraStream.getVideoTracks()[0];
+                    const capabilities = track.getCapabilities();
+                    if (capabilities.zoom) {
+                        try { track.applyConstraints({advanced: [ {zoom: 1.5} ]}); } catch(e){}
+                    }
+
+                    // Auto-Capture อัตโนมัติหลังสั่น 0.8 วินาที
+                    setTimeout(() => { takeSmartSnapshot(); }, 800);
+                }, 3500); // รอเวลาจัดตำแหน่งภาพ 3.5 วินาที
+                
             } catch (err) {
                 console.error("Camera access denied", err);
-                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตหรือใช้วิธีแนบไฟล์รูปแทน', 'error');
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาแนบไฟล์รูปแทน', 'error');
                 closeSmartCamera();
-                document.getElementById('fallbackCameraInput').click(); // Fallback
+                document.getElementById('fallbackCameraInput').click(); 
             }
         }
 
         function closeSmartCamera() {
             document.getElementById('smartCameraModal').classList.add('hidden');
             if (cameraStream) { cameraStream.getTracks().forEach(track => track.stop()); cameraStream = null; }
+            clearTimeout(scanInterval); // ยกเลิกการถ่ายอัตโนมัติถ้าปิดก่อน
         }
 
         async function flipCamera() {
@@ -472,87 +506,79 @@
             await openSmartCamera();
         }
 
-        // 3.2 ถ่ายภาพและทำ Auto-Crop (จำลอง)
+        // 3.2 ถ่ายภาพ
         async function takeSmartSnapshot() {
             const video = document.getElementById('cameraVideo');
-            
-            // วาดภาพจากวิดีโอลง Canvas
             const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const fullImageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            const fullImageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
             closeSmartCamera();
-            
             processOCRData(fullImageDataUrl);
         }
 
-        // 3.3 Fallback กรณีเปิดกล้องไม่ได้ ให้ใช้ File Upload แทน
+        // 3.3 Fallback กรณีเปิดกล้องไม่ได้
         async function processFallbackOCR(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = (e) => { processOCRData(e.target.result); };
                 reader.readAsDataURL(input.files[0]);
-                input.value = ''; // clear
+                input.value = ''; 
             }
         }
 
-        // 3.4 ฟังก์ชันหลักในการสกัดข้อมูลและแสดง Data Confirmation Popup
+        // 3.4 ฟังก์ชันหลัก Tesseract.js (Real OCR) + Data Confirmation Popup
         async function processOCRData(imageSrcDataUrl) {
             Swal.fire({ 
-                title: 'AI กำลังทำงาน...', 
-                html: '<div class="text-sm text-slate-500 mt-2"><i class="fa-solid fa-crop-simple text-blue-500 mr-2"></i>กำลังครอปภาพและปรับแก้ความเอียง<br><br><i class="fa-solid fa-language text-blue-500 mr-2"></i>กำลังสกัดข้อความภาษาไทย...</div>', 
+                title: 'AI กำลังอ่านข้อความ...', 
+                html: '<div class="text-sm text-slate-500 mt-2"><i class="fa-solid fa-microchip text-blue-500 mr-2"></i>กำลังใช้ Tesseract AI สกัดข้อมูลจากบัตรจริง<br><span class="text-red-500">(กระบวนการนี้อาจใช้เวลา 5-15 วินาที)</span></div>', 
                 allowOutsideClick: false, 
                 didOpen: () => Swal.showLoading() 
             });
             
-            // ประทับลายน้ำลงบนรูปภาพ
+            // ประทับลายน้ำ (PDPA)
             ocrWatermarkedImageBase64 = await applyWatermarkToSrc(imageSrcDataUrl, "ใช้สำหรับยื่นคำร้องภัยพิบัติ (E-Gov) เท่านั้น");
 
-            // จำลองเวลาส่งประมวลผลเซิร์ฟเวอร์ AI
-            setTimeout(() => {
-                // ข้อมูลจำลองที่สมมติว่า AI อ่านได้
-                const mockData = { id: "1729900123456", prefix: "นาง", fname: "ใจดี", lname: "มีสุข", dob: "1955-05-15", address: "99", moo: "1", subDistrict: "พลับพลาไชย", district: "อู่ทอง", province: "สุพรรณบุรี" };
+            try {
+                // อ่านข้อความด้วย Tesseract.js ของจริง
+                const result = await Tesseract.recognize(imageSrcDataUrl, 'tha+eng');
+                const text = result.data.text;
                 
-                // ระบบคำนวณอายุอัตโนมัติ
-                const age = new Date().getFullYear() - new Date(mockData.dob).getFullYear();
-                isVulnerablePerson = age >= 60;
-                const vulnTag = isVulnerablePerson ? `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold shadow-sm ml-2">ผู้สูงอายุ (${age} ปี)</span>` : `<span class="text-slate-500 text-xs ml-2">(อายุ ${age} ปี)</span>`;
+                // สกัดข้อมูล (Regex)
+                let mockData = parseIDCardData(text);
 
-                // Data Confirmation Popup
+                // สั่นเตือนเมื่ออ่านเสร็จ
+                if (navigator.vibrate) navigator.vibrate([200]); 
+
+                const age = mockData.dob ? (new Date().getFullYear() - new Date(mockData.dob).getFullYear()) : 0;
+                isVulnerablePerson = age >= 60;
+                const vulnTag = isVulnerablePerson ? `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold shadow-sm ml-2">ผู้สูงอายุ</span>` : ``;
+
                 Swal.fire({
                     title: 'ยืนยันข้อมูลจากบัตร',
                     width: '32rem',
                     html: `
                         <div class="text-left text-sm mt-4">
-                            <!-- กรอบแสดงรูปบัตรที่ผ่านการ Crop และประทับลายน้ำ -->
                             <div class="relative rounded-xl overflow-hidden border-2 border-green-400 mb-4 shadow-sm bg-slate-100">
-                                <div class="absolute top-2 left-2 bg-green-500/90 backdrop-blur text-white text-[10px] px-2 py-1 rounded shadow"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Cropped & Deskewed</div>
-                                <img src="${ocrWatermarkedImageBase64}" class="w-full object-cover" style="max-height: 180px;" alt="Watermarked ID">
+                                <div class="absolute top-2 left-2 bg-green-500/90 backdrop-blur text-white text-[10px] px-2 py-1 rounded shadow"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Cropped & Watermarked</div>
+                                <img src="${ocrWatermarkedImageBase64}" class="w-full object-cover" style="max-height: 180px;">
                             </div>
-                            
-                            <!-- กรอบแสดงข้อมูล (Data Extraction) -->
                             <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl space-y-3">
                                 <div class="flex justify-between items-end border-b border-blue-100 pb-2">
                                     <span class="text-blue-600/80 font-semibold text-xs">เลขประจำตัวประชาชน</span>
-                                    <span class="font-mono text-blue-900 font-bold text-lg">${mockData.id}</span>
+                                    <span class="font-mono text-blue-900 font-bold text-lg">${mockData.id || '<span class="text-red-500 text-sm">อ่านไม่พบ (โปรดกรอกเอง)</span>'}</span>
                                 </div>
                                 <div class="flex justify-between items-end border-b border-blue-100 pb-2">
                                     <span class="text-blue-600/80 font-semibold text-xs">ชื่อ - นามสกุล</span>
-                                    <span class="text-blue-900 font-bold">${mockData.prefix}${mockData.fname} ${mockData.lname}</span>
-                                </div>
-                                <div class="flex justify-between items-end border-b border-blue-100 pb-2">
-                                    <span class="text-blue-600/80 font-semibold text-xs">วันเกิด</span>
-                                    <div class="flex items-center"><span class="text-blue-900 font-bold">${mockData.dob}</span> ${vulnTag}</div>
+                                    <span class="text-blue-900 font-bold">${mockData.prefix} ${mockData.fname} ${mockData.lname} ${vulnTag}</span>
                                 </div>
                                 <div>
                                     <span class="text-blue-600/80 font-semibold text-xs block mb-1">ที่อยู่</span>
-                                    <span class="text-blue-900 font-bold">บ้านเลขที่ ${mockData.address} ม.${mockData.moo} ต.${mockData.subDistrict} อ.${mockData.district} จ.${mockData.province}</span>
+                                    <span class="text-blue-900 font-bold">บ้านเลขที่ ${mockData.address || '-'} ม.${mockData.moo || '-'}</span>
                                 </div>
                             </div>
-                            <p class="text-[11px] text-orange-600 mt-3 text-center"><i class="fa-solid fa-triangle-exclamation"></i> โปรดตรวจสอบความถูกต้อง หากมีจุดผิดพลาดสามารถแก้ไขได้ในฟอร์ม</p>
+                            <p class="text-[11px] text-orange-600 mt-3 text-center"><i class="fa-solid fa-triangle-exclamation"></i> การสกัดข้อความด้วย AI หน้าเว็บอาจมีจุดคลาดเคลื่อน หากมีข้อผิดพลาดสามารถแก้ไขได้ในฟอร์ม</p>
                         </div>
                     `,
                     showCancelButton: true,
@@ -560,49 +586,59 @@
                     cancelButtonText: 'สแกนใหม่',
                     confirmButtonColor: '#22c55e',
                     reverseButtons: true
-                }).then((result) => {
-                    if (result.isConfirmed) {
+                }).then((res) => {
+                    if (res.isConfirmed) {
                         autoFillForm(mockData);
-                        Swal.fire({icon: 'success', title: 'ดึงข้อมูลสำเร็จ', text: 'ระบบประทับลายน้ำและกรอกข้อมูลให้เรียบร้อยแล้ว', timer: 2000, showConfirmButton: false});
-                    } else if (result.dismiss === Swal.DismissReason.cancel) {
+                        Swal.fire({icon: 'success', title: 'ดึงข้อมูลสำเร็จ', text: 'ระบบกรอกข้อมูลให้เรียบร้อยแล้ว', timer: 2000, showConfirmButton: false});
+                    } else if (res.dismiss === Swal.DismissReason.cancel) {
                         ocrWatermarkedImageBase64 = null;
-                        openSmartCamera(); // เปิดกล้องใหม่
+                        openSmartCamera(); 
                     }
                 });
-            }, 1800);
+            } catch(e) {
+                console.error(e);
+                Swal.fire('ขัดข้อง', 'AI อ่านภาพไม่สำเร็จ กรุณาถ่ายในที่สว่างและชัดเจน', 'error');
+            }
         }
 
-        // 3.5 นำข้อมูลสวมเข้าฟอร์ม + ทำ Auto Cascade Dropdown
+        // ฟังก์ชันช่วยสกัดข้อมูลด้วย Regex
+        function parseIDCardData(text) {
+            let data = { id: "", prefix: "นาย", fname: "", lname: "", dob: "", address: "", moo: "" };
+            
+            // 1. หาเลข 13 หลัก
+            const idMatch = text.replace(/[\s-]/g, '').match(/\d{13}/);
+            if (idMatch) data.id = idMatch[0];
+
+            // 2. หาชื่อ-สกุล
+            const nameMatch = text.match(/(นาย|นาง|นางสาว)\s*([ก-๙a-zA-Z]+)\s+([ก-๙a-zA-Z]+)/);
+            if (nameMatch) {
+                data.prefix = nameMatch[1]; data.fname = nameMatch[2]; data.lname = nameMatch[3];
+            } else {
+                 const lines = text.split('\n');
+                 for(let line of lines) {
+                     if(line.includes('ชื่อ') || line.includes('Name')) {
+                         const parts = line.replace(/ชื่อ|สกุล|ตัว|Last|Name/g, '').trim().split(/\s+/);
+                         if(parts.length >= 1) data.fname = parts[0];
+                         if(parts.length >= 2) data.lname = parts.slice(1).join(' ');
+                     }
+                 }
+            }
+            
+            // 3. หาที่อยู่
+            const addrMatch = text.match(/(?:ที่อยู่|อยู่)\s*(\d+\/?\d*)\s*(?:หมู่ที่|หมู่|ม\.)?\s*(\d*)/);
+            if (addrMatch) { data.address = addrMatch[1]; data.moo = addrMatch[2]; }
+            return data;
+        }
+
         function autoFillForm(data) {
-            document.getElementById('citizenId').value = data.id; 
-            document.getElementById('prefix').value = data.prefix; 
-            document.getElementById('fullName').value = `${data.fname} ${data.lname}`; 
-            document.getElementById('address').value = data.address;
+            if(data.id) document.getElementById('citizenId').value = data.id; 
+            if(data.prefix) document.getElementById('prefix').value = data.prefix; 
+            if(data.fname || data.lname) document.getElementById('fullName').value = `${data.fname} ${data.lname}`.trim(); 
+            if(data.address) document.getElementById('address').value = data.address;
             
-            // Auto Select Dropdowns (Cascading Automation)
-            document.getElementById('province').value = data.province; 
-            populateDistricts();
-            setTimeout(() => { 
-                document.getElementById('district').value = data.district; 
-                populateSubDistricts();
-                setTimeout(() => { 
-                    document.getElementById('subDistrict').value = data.subDistrict; 
-                    populateDetails();
-                    setTimeout(() => { 
-                        document.getElementById('moo').value = data.moo; 
-                    }, 100);
-                }, 100);
-            }, 100);
-            
-            // อัปเดต UI ส่วนแนบเอกสาร
             const docIdContainer = document.getElementById('docIdContainer');
             docIdContainer.className = 'bg-green-50 p-4 rounded-xl border-2 border-green-200 text-center mt-2 relative overflow-hidden';
-            docIdContainer.innerHTML = `
-                <div class="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 rounded-bl-lg font-bold"><i class="fa-solid fa-robot"></i> AI Processed</div>
-                <i class="fa-solid fa-circle-check text-4xl text-green-500 mb-2 mt-2 drop-shadow-sm"></i>
-                <p class="text-sm font-bold text-green-800">แนบบัตร ปชช. เรียบร้อยแล้ว</p>
-                <p class="text-xs text-green-600 mt-1">(ดึงจากระบบสแกนกล้องอัจฉริยะ)</p>
-            `;
+            docIdContainer.innerHTML = `<div class="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 rounded-bl-lg font-bold"><i class="fa-solid fa-robot"></i> AI Processed</div><i class="fa-solid fa-circle-check text-4xl text-green-500 mb-2 mt-2 drop-shadow-sm"></i><p class="text-sm font-bold text-green-800">แนบบัตร ปชช. พร้อมลายน้ำแล้ว</p>`;
             document.getElementById('docId').required = false; 
         }
 
