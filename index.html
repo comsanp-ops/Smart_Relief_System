@@ -19,7 +19,7 @@
     <!-- Signature Pad -->
     <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 
-    <!-- เพิ่ม Tesseract.js สำหรับอ่านข้อความจากภาพจริง (Real AI OCR) -->
+    <!-- Tesseract.js สำหรับอ่านข้อความจากภาพจริง (Real AI OCR) -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <style>
@@ -73,8 +73,6 @@
         const GAS_URL = "https://script.google.com/macros/s/AKfycbw1vEWbEkxu4MiRqf7id5kuQRycSN6cprEZSg9f6M499mOYTwA5dLuLpKPxwIiRy8Sj/exec"; 
         
         // System Config
-        const TOTAL_BUDGET = 5000000; // งบประมาณจำลอง 5 ล้านบาท
-        
         let locationData = []; let adminRecords = []; 
         let dashboardMap = null; let signaturePad = null;
         let areaChart, donutChart;
@@ -88,7 +86,7 @@
 <body>
 
     <!-- ============================================== -->
-    <!-- CAMERA UI MODAL (เพิ่มใหม่) -->
+    <!-- CAMERA UI MODAL -->
     <!-- ============================================== -->
     <div id="smartCameraModal" class="hidden fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center">
         <!-- Header -->
@@ -104,7 +102,7 @@
             <!-- Darkened borders around the cutout -->
             <div class="absolute inset-0 border-[40px] border-black/60 pointer-events-none"></div>
             
-            <!-- Target Overlay (ID Card Shape) - อัปเดต AR Edge Tracking -->
+            <!-- Target Overlay (ID Card Shape) -->
             <div id="cameraGuideBox" class="absolute w-[80%] aspect-[1.586/1] border-2 border-yellow-400 text-yellow-400 rounded-xl pointer-events-none flex items-center justify-center shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] transition-colors duration-300">
                 <!-- Corner markers -->
                 <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-current rounded-tl-xl"></div>
@@ -177,11 +175,10 @@
                 </div>
             </div>
 
-            <form id="reliefForm" onsubmit="submitForm(event)" class="space-y-6">
+            <form id="reliefForm" class="space-y-6">
                 
                 <!-- STEP 1 -->
                 <div id="step-1" class="step-content active">
-                    
                     <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-5 mb-6 rounded-r-xl shadow-sm flex items-start">
                         <div class="bg-blue-100 p-3 rounded-full mr-4 shadow-inner mt-1"><i class="fa-solid fa-brain text-blue-600 text-2xl"></i></div>
                         <div>
@@ -319,7 +316,7 @@
 
                         <div class="flex justify-between mt-6 pt-4 border-t">
                             <button type="button" onclick="nextStep(2)" class="bg-slate-200 text-slate-700 font-bold py-3 px-6 rounded-xl hover:bg-slate-300"><i class="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ</button>
-                            <button type="submit" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-3 px-10 rounded-xl hover:shadow-lg hover:-translate-y-1 transition text-lg"><i class="fa-solid fa-paper-plane mr-2"></i> ยืนยันคำร้อง</button>
+                            <button type="button" onclick="submitForm(event)" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-3 px-10 rounded-xl hover:shadow-lg hover:-translate-y-1 transition text-lg"><i class="fa-solid fa-paper-plane mr-2"></i> ยืนยันคำร้อง</button>
                         </div>
                     </div>
                 </div>
@@ -441,12 +438,113 @@
     <script>
         // --- 1. Init ---
         let currentRole = 'admin';
+        
+        window.addEventListener('DOMContentLoaded', async () => {
+            initSignaturePad();
+            try {
+                const res = await fetch(`${GAS_URL}?action=getLocations`);
+                const r = await res.json();
+                if (r.status === 'success') {
+                    locationData = r.data;
+                    const provinces = [...new Set(locationData.map(item => item.Province))];
+                    const provSelect = document.getElementById('province');
+                    provinces.forEach(p => provSelect.add(new Option(p, p)));
+                }
+            } catch(e) { console.log("Init API Error:", e); }
+        });
+
+        // --- 2. UI Theme & Navigation ---
+        function toggleDarkMode() { document.body.classList.toggle('dark-theme'); document.body.classList.remove('high-contrast'); }
+        function toggleHighContrast() { document.body.classList.toggle('high-contrast'); document.body.classList.remove('dark-theme'); }
+        function switchTab(t) { 
+            ['form', 'track', 'admin'].forEach(id => { document.getElementById(`view-${id}`).classList.add('hidden'); document.getElementById(`tab-${id}`).classList.remove('nav-active'); }); 
+            document.getElementById(`view-${t}`).classList.remove('hidden'); document.getElementById(`tab-${t}`).classList.add('nav-active'); 
+            if(t === 'admin' && dashboardMap) setTimeout(() => { dashboardMap.invalidateSize(); }, 300);
+        }
+
+        // ==========================================
+        // 🚀 อัปเดต: ระบบจัดการ Multi-Step Form (ที่แก้ไขปัญหากดถัดไปไม่ได้)
+        // ==========================================
+        function nextStep(stepNumber) {
+            // 1. ตรวจสอบ Validation ก่อนไปหน้าถัดไป (เฉพาะกรณีที่กำลังกด "ถัดไป")
+            if (stepNumber > currentStep) {
+                const currentStepDiv = document.getElementById(`step-${currentStep}`);
+                // หาเฉพาะ input, select, textarea ในหน้าที่กำลังเปิดอยู่ ที่มีคำว่า required
+                const requiredInputs = currentStepDiv.querySelectorAll('input[required], select[required], textarea[required]');
+                
+                let isValid = true;
+                
+                // เช็คว่ามีช่องไหนไม่ได้กรอกไหม
+                for (let i = 0; i < requiredInputs.length; i++) {
+                    const input = requiredInputs[i];
+                    if (!input.checkValidity()) {
+                        input.reportValidity(); // แจ้งเตือนขึ้นบนหน้าจอ
+                        isValid = false;
+                        break; // หยุดลูป
+                    }
+                }
+                
+                // เช็คเลขบัตร ปชช (Step 1)
+                if (currentStep === 1) {
+                    const cidError = document.getElementById('cid-error');
+                    if (cidError && !cidError.classList.contains('hidden')) {
+                        Swal.fire("ข้อมูลไม่ถูกต้อง", "โปรดตรวจสอบเลขประจำตัวประชาชน 13 หลัก", "warning");
+                        isValid = false;
+                    }
+                }
+
+                // ถ้ากรอกไม่ครบ ห้ามเปลี่ยนหน้า
+                if (!isValid) return; 
+            }
+
+            // 2. ถ้าผ่านการตรวจสอบ หรือเป็นการกด "ย้อนกลับ" ให้สลับหน้าจอ
+            for (let i = 1; i <= 3; i++) {
+                const stepDiv = document.getElementById(`step-${i}`);
+                const label = document.getElementById(`step-lbl-${i}`);
+                if (stepDiv) {
+                    stepDiv.style.display = 'none';
+                    stepDiv.classList.remove('active');
+                }
+                if (label) {
+                     if (i === stepNumber) {
+                         label.classList.add('text-blue-600', 'font-bold');
+                         label.classList.remove('text-slate-400');
+                     } else {
+                         label.classList.remove('text-blue-600', 'font-bold');
+                         label.classList.add('text-slate-400');
+                     }
+                }
+            }
+
+            // เปิดหน้าถัดไป
+            const targetStepDiv = document.getElementById(`step-${stepNumber}`);
+            if (targetStepDiv) {
+                targetStepDiv.style.display = 'block';
+                targetStepDiv.classList.add('active');
+            }
+
+            // อัปเดต Progress Bar
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                const percent = (stepNumber / 3) * 100;
+                progressBar.style.width = `${percent}%`;
+            }
+            
+            // รีเซ็ต Canvas ลายเซ็นถ้ามาหน้า 3
+            if (stepNumber === 3) {
+                setTimeout(() => { initSignaturePad(); }, 100);
+            }
+
+            currentStep = stepNumber;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+
         // --- 3. Camera OCR, AR & Haptic Feedback ---
         let cameraStream = null;
         let currentFacingMode = 'environment';
         let scanInterval = null;
 
-        // 3.1 เปิดกล้องและระบบ AR Edge Detection + Auto Capture
         async function openSmartCamera() {
             const modal = document.getElementById('smartCameraModal');
             const video = document.getElementById('cameraVideo');
@@ -454,7 +552,6 @@
             
             modal.classList.remove('hidden');
             
-            // Reset AR UI
             guideBox.classList.remove('text-green-400', 'border-green-400');
             guideBox.classList.add('text-yellow-400', 'border-yellow-400');
             document.getElementById('scanStatusText').innerText = "กรุณาวางบัตรในกรอบ (กำลังค้นหา)";
@@ -466,26 +563,21 @@
                 });
                 video.srcObject = cameraStream;
                 
-                // ระบบ AR Edge Tracking & Haptic Feedback
                 scanInterval = setTimeout(async () => {
-                    // เปลี่ยนสีเมื่อเข้ากรอบ (Smart Feedback)
                     guideBox.classList.remove('text-yellow-400', 'border-yellow-400');
                     guideBox.classList.add('text-green-400', 'border-green-400');
                     document.getElementById('scanStatusText').innerText = "ทาบพอดีแล้ว! กำลังถ่ายภาพ...";
                     
-                    // Haptic API (ระบบสั่นอัจฉริยะ) สั่น 2 ครั้ง
                     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                     
-                    // Dynamic Zoom เลือกระยะโฟกัส
                     const track = cameraStream.getVideoTracks()[0];
                     const capabilities = track.getCapabilities();
                     if (capabilities.zoom) {
                         try { track.applyConstraints({advanced: [ {zoom: 1.5} ]}); } catch(e){}
                     }
 
-                    // Auto-Capture อัตโนมัติหลังสั่น 0.8 วินาที
                     setTimeout(() => { takeSmartSnapshot(); }, 800);
-                }, 3500); // รอเวลาจัดตำแหน่งภาพ 3.5 วินาที
+                }, 3500); 
                 
             } catch (err) {
                 console.error("Camera access denied", err);
@@ -498,7 +590,7 @@
         function closeSmartCamera() {
             document.getElementById('smartCameraModal').classList.add('hidden');
             if (cameraStream) { cameraStream.getTracks().forEach(track => track.stop()); cameraStream = null; }
-            clearTimeout(scanInterval); // ยกเลิกการถ่ายอัตโนมัติถ้าปิดก่อน
+            clearTimeout(scanInterval); 
         }
 
         async function flipCamera() {
@@ -506,19 +598,47 @@
             await openSmartCamera();
         }
 
-        // 3.2 ถ่ายภาพ
+        // ==========================================
+        // 🚀 อัปเดต: การครอบตัดภาพ (Crop) เพื่อให้อ่านแม่นยำขึ้น
+        // ==========================================
         async function takeSmartSnapshot() {
             const video = document.getElementById('cameraVideo');
+            const guideBox = document.getElementById('cameraGuideBox');
             const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const fullImageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // หาขนาดจริงของวิดีโอ
+            const vWidth = video.videoWidth;
+            const vHeight = video.videoHeight;
+            
+            // ถ้าดึงขนาดไม่ได้ ให้ใช้ภาพเต็ม
+            if(vWidth === 0 || vHeight === 0) {
+                 canvas.width = 640; canvas.height = 480;
+                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            } else {
+                 // คำนวณอัตราส่วนเพื่อครอบตัดเฉพาะตรงกลาง (จำลองตำแหน่ง Guide Box)
+                 // กรอบ Guide Box ประมาณ 80% ของความกว้างหน้าจอ
+                 const cropWidth = vWidth * 0.8;
+                 const cropHeight = cropWidth / 1.586; // สัดส่วนบัตร ปชช.
+                 const startX = (vWidth - cropWidth) / 2;
+                 const startY = (vHeight - cropHeight) / 2;
+
+                 canvas.width = cropWidth;
+                 canvas.height = cropHeight;
+                 
+                 // วาดเฉพาะส่วนที่ Crop ลงไปใน Canvas
+                 ctx.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                 
+                 // เพิ่มคอนทราสต์ (Contrast) เพื่อให้ AI อ่านง่ายขึ้น
+                 ctx.filter = 'contrast(1.2) grayscale(0.5)';
+                 ctx.drawImage(canvas, 0, 0); // วาดทับ
+            }
+            
+            const croppedImageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
             closeSmartCamera();
-            processOCRData(fullImageDataUrl);
+            processOCRData(croppedImageDataUrl);
         }
 
-        // 3.3 Fallback กรณีเปิดกล้องไม่ได้
         async function processFallbackOCR(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
@@ -528,27 +648,22 @@
             }
         }
 
-        // 3.4 ฟังก์ชันหลัก Tesseract.js (Real OCR) + Data Confirmation Popup
         async function processOCRData(imageSrcDataUrl) {
             Swal.fire({ 
                 title: 'AI กำลังอ่านข้อความ...', 
-                html: '<div class="text-sm text-slate-500 mt-2"><i class="fa-solid fa-microchip text-blue-500 mr-2"></i>กำลังใช้ Tesseract AI สกัดข้อมูลจากบัตรจริง<br><span class="text-red-500">(กระบวนการนี้อาจใช้เวลา 5-15 วินาที)</span></div>', 
+                html: '<div class="text-sm text-slate-500 mt-2"><i class="fa-solid fa-microchip text-blue-500 mr-2"></i>กำลังใช้ Tesseract AI สกัดข้อมูลจากภาพ<br><span class="text-red-500">(กระบวนการนี้อาจใช้เวลา 5-10 วินาที)</span></div>', 
                 allowOutsideClick: false, 
                 didOpen: () => Swal.showLoading() 
             });
             
-            // ประทับลายน้ำ (PDPA)
             ocrWatermarkedImageBase64 = await applyWatermarkToSrc(imageSrcDataUrl, "ใช้สำหรับยื่นคำร้องภัยพิบัติ (E-Gov) เท่านั้น");
 
             try {
-                // อ่านข้อความด้วย Tesseract.js ของจริง
                 const result = await Tesseract.recognize(imageSrcDataUrl, 'tha+eng');
                 const text = result.data.text;
                 
-                // สกัดข้อมูล (Regex)
                 let mockData = parseIDCardData(text);
 
-                // สั่นเตือนเมื่ออ่านเสร็จ
                 if (navigator.vibrate) navigator.vibrate([200]); 
 
                 const age = mockData.dob ? (new Date().getFullYear() - new Date(mockData.dob).getFullYear()) : 0;
@@ -567,7 +682,7 @@
                             <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl space-y-3">
                                 <div class="flex justify-between items-end border-b border-blue-100 pb-2">
                                     <span class="text-blue-600/80 font-semibold text-xs">เลขประจำตัวประชาชน</span>
-                                    <span class="font-mono text-blue-900 font-bold text-lg">${mockData.id || '<span class="text-red-500 text-sm">อ่านไม่พบ (โปรดกรอกเอง)</span>'}</span>
+                                    <span class="font-mono text-blue-900 font-bold text-lg">${mockData.id || '<span class="text-red-500 text-sm">อ่านไม่พบ</span>'}</span>
                                 </div>
                                 <div class="flex justify-between items-end border-b border-blue-100 pb-2">
                                     <span class="text-blue-600/80 font-semibold text-xs">ชื่อ - นามสกุล</span>
@@ -578,7 +693,7 @@
                                     <span class="text-blue-900 font-bold">บ้านเลขที่ ${mockData.address || '-'} ม.${mockData.moo || '-'}</span>
                                 </div>
                             </div>
-                            <p class="text-[11px] text-orange-600 mt-3 text-center"><i class="fa-solid fa-triangle-exclamation"></i> การสกัดข้อความด้วย AI หน้าเว็บอาจมีจุดคลาดเคลื่อน หากมีข้อผิดพลาดสามารถแก้ไขได้ในฟอร์ม</p>
+                            <p class="text-[11px] text-orange-600 mt-3 text-center"><i class="fa-solid fa-triangle-exclamation"></i> *หากตัวหนังสือไม่ครบถ้วน สามารถพิมพ์แก้ไขเพิ่มเติมได้ในฟอร์มครับ</p>
                         </div>
                     `,
                     showCancelButton: true,
@@ -601,37 +716,66 @@
             }
         }
 
-        // ฟังก์ชันช่วยสกัดข้อมูลด้วย Regex
+        // ==========================================
+        // 🚀 อัปเดต: Regex ให้ยืดหยุ่นขึ้นในการอ่านชื่อ/ที่อยู่
+        // ==========================================
         function parseIDCardData(text) {
             let data = { id: "", prefix: "นาย", fname: "", lname: "", dob: "", address: "", moo: "" };
             
-            // 1. หาเลข 13 หลัก
+            // 1. หาเลข 13 หลัก (ยืดหยุ่นขึ้น)
             const idMatch = text.replace(/[\s-]/g, '').match(/\d{13}/);
             if (idMatch) data.id = idMatch[0];
 
-            // 2. หาชื่อ-สกุล
-            const nameMatch = text.match(/(นาย|นาง|นางสาว)\s*([ก-๙a-zA-Z]+)\s+([ก-๙a-zA-Z]+)/);
-            if (nameMatch) {
-                data.prefix = nameMatch[1]; data.fname = nameMatch[2]; data.lname = nameMatch[3];
-            } else {
-                 const lines = text.split('\n');
-                 for(let line of lines) {
-                     if(line.includes('ชื่อ') || line.includes('Name')) {
-                         const parts = line.replace(/ชื่อ|สกุล|ตัว|Last|Name/g, '').trim().split(/\s+/);
-                         if(parts.length >= 1) data.fname = parts[0];
-                         if(parts.length >= 2) data.lname = parts.slice(1).join(' ');
-                     }
-                 }
+            // 2. หาชื่อ-สกุล (ค้นหาคำนำหน้า)
+            const prefixRegex = /(นาย|นาง|นางสาว|ด\.ช\.|ด\.ญ\.)/g;
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            
+            for(let i=0; i<lines.length; i++) {
+                let line = lines[i];
+                if (line.match(prefixRegex) || line.includes('ชื่อ') || line.includes('Name')) {
+                    // ลบคำที่ไม่ต้องการออก
+                    let cleaned = line.replace(/ชื่อ|สกุล|ตัว|Last|Name|Thai/ig, '').trim();
+                    let parts = cleaned.split(/\s+/);
+                    
+                    // สกัดคำนำหน้า
+                    let matchedPrefix = cleaned.match(prefixRegex);
+                    if(matchedPrefix) {
+                        data.prefix = matchedPrefix[0];
+                        cleaned = cleaned.replace(matchedPrefix[0], '').trim();
+                        parts = cleaned.split(/\s+/);
+                    }
+                    
+                    if(parts.length >= 1 && parts[0].length > 1) data.fname = parts[0];
+                    if(parts.length >= 2) data.lname = parts.slice(1).join(' ');
+                    break; 
+                }
             }
             
-            // 3. หาที่อยู่
-            const addrMatch = text.match(/(?:ที่อยู่|อยู่)\s*(\d+\/?\d*)\s*(?:หมู่ที่|หมู่|ม\.)?\s*(\d*)/);
-            if (addrMatch) { data.address = addrMatch[1]; data.moo = addrMatch[2]; }
+            // 3. หาที่อยู่ (ยืดหยุ่นหาคำว่า ที่อยู่, หมู่, ต.)
+            for(let i=0; i<lines.length; i++) {
+                let line = lines[i];
+                if (line.includes('ที่อยู่') || line.includes('หมู่') || line.includes('ต.')) {
+                    let addrStr = line.replace(/ที่อยู่/g, '').trim();
+                    
+                    // ดึงบ้านเลขที่
+                    let addrMatch = addrStr.match(/(\d+\/?\d*)/);
+                    if (addrMatch) data.address = addrMatch[1];
+                    
+                    // ดึงหมู่
+                    let mooMatch = addrStr.match(/(?:หมู่ที่|หมู่|ม\.)\s*(\d+)/);
+                    if (mooMatch) data.moo = mooMatch[1];
+                    
+                    break;
+                }
+            }
             return data;
         }
 
         function autoFillForm(data) {
-            if(data.id) document.getElementById('citizenId').value = data.id; 
+            if(data.id) {
+                 document.getElementById('citizenId').value = data.id; 
+                 validateCitizenId(document.getElementById('citizenId')); // สั่งให้เอาตัวแดงออกถ้าถูก
+            }
             if(data.prefix) document.getElementById('prefix').value = data.prefix; 
             if(data.fname || data.lname) document.getElementById('fullName').value = `${data.fname} ${data.lname}`.trim(); 
             if(data.address) document.getElementById('address').value = data.address;
@@ -642,7 +786,6 @@
             document.getElementById('docId').required = false; 
         }
 
-        // 3.6 ฟังก์ชันประทับลายน้ำจาก URL/Base64
         function applyWatermarkToSrc(src, text) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -650,25 +793,19 @@
                     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
                     canvas.width = img.width; canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    // ลายน้ำแนวทแยง
                     ctx.font = `bold ${Math.floor(canvas.width / 15)}px Sarabun, sans-serif`; 
-                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; // สีแดงโปร่งใส
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.translate(canvas.width / 2, canvas.height / 2); 
                     ctx.rotate(-Math.PI / 6);
-                    
-                    // ใส่ 3 บรรทัดให้ครอบคลุม
-                    ctx.fillText(text, 0, -100);
-                    ctx.fillText(text, 0, 0);
-                    ctx.fillText(text, 0, 100);
-                    
+                    ctx.fillText(text, 0, -100); ctx.fillText(text, 0, 0); ctx.fillText(text, 0, 100);
                     resolve(canvas.toDataURL('image/jpeg', 0.8));
                 };
                 img.src = src;
             });
         }
 
-        // --- 4. Form Logistics (Dropdowns, Family, GPS, Signature) ---
+        // --- 4. Form Logistics ---
         function populateDistricts() { const p = document.getElementById('province').value; const dist = document.getElementById('district'); const sub = document.getElementById('subDistrict'); const moo = document.getElementById('moo'); dist.innerHTML = '<option value="">-- เลือก --</option>'; sub.innerHTML = '<option value="">-- เลือก --</option>'; moo.innerHTML = '<option value="">-- เลือก --</option>'; document.getElementById('zipcode').value = ''; dist.disabled = !p; dist.classList.toggle('opacity-60', !p); sub.disabled = true; sub.classList.add('opacity-60'); moo.disabled = true; moo.classList.add('opacity-60'); if(p) [...new Set(locationData.filter(i => i.Province === p).map(i => i.District))].forEach(d => dist.add(new Option(d, d))); }
         function populateSubDistricts() { const p = document.getElementById('province').value; const d = document.getElementById('district').value; const sub = document.getElementById('subDistrict'); const moo = document.getElementById('moo'); sub.innerHTML = '<option value="">-- เลือก --</option>'; moo.innerHTML = '<option value="">-- เลือก --</option>'; document.getElementById('zipcode').value = ''; sub.disabled = !d; sub.classList.toggle('opacity-60', !d); moo.disabled = true; moo.classList.add('opacity-60'); if(d) [...new Set(locationData.filter(i => i.Province === p && i.District === d).map(i => i.Sub_District))].forEach(s => sub.add(new Option(s, s))); }
         function populateDetails() { const p = document.getElementById('province').value; const d = document.getElementById('district').value; const s = document.getElementById('subDistrict').value; const moo = document.getElementById('moo'); moo.innerHTML = '<option value="">-- เลือก --</option>'; moo.disabled = !s; moo.classList.toggle('opacity-60', !s); if(s) { const match = locationData.find(i => i.Province === p && i.District === d && i.Sub_District === s); if(match) { document.getElementById('zipcode').value = match.Zipcode; if(match.Moo_List && match.Moo_List !== "-") { match.Moo_List.split(',').forEach(m => moo.add(new Option(`หมู่ ${m.trim()}`, m.trim()))); } else moo.add(new Option("ไม่มีหมู่", "-")); } } }
@@ -682,8 +819,18 @@
 
         async function getFileBase64(id, cat) { const input = document.getElementById(id); if (input && input.files[0]) { const file = input.files[0]; return new Promise(res => { const reader = new FileReader(); reader.onload = e => res({ name: file.name, mimeType: file.type, data: e.target.result.split(',')[1], category: cat }); reader.readAsDataURL(file); }); } return null; }
         
+        // ==========================================
+        // 🚀 อัปเดต: การทำงานของปุ่ม Submit
+        // ==========================================
         async function submitForm(e) {
             e.preventDefault();
+            
+            // เช็คก่อนว่าฟอร์มปัจจุบันกรอกครบไหม (เผื่อกด Submit จากแป้นพิมพ์)
+            if(!document.getElementById('reliefForm').checkValidity()) {
+                 document.getElementById('reliefForm').reportValidity();
+                 return;
+            }
+
             if (signaturePad.isEmpty()) return Swal.fire("แจ้งเตือน", "กรุณาลงลายมือชื่อรับรองก่อนส่ง", "warning");
             Swal.fire({ title: 'กำลังส่งคำร้อง...', text: 'ระบบกำลังจัดเก็บข้อมูลและไฟล์ลงเซิร์ฟเวอร์', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             
